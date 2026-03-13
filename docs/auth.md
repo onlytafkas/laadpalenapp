@@ -1,59 +1,99 @@
 # Authentication — Clerk
 
-All authentication in this app is handled exclusively by Clerk. Never implement custom auth, NextAuth, or any other auth solution.
+All authentication in this app is handled exclusively by **Clerk**. No custom auth solutions, no alternative providers.
 
 ## Rules
 
-- **Clerk only.** No custom auth logic, sessions, JWTs, or middleware outside of Clerk.
-- **Sign-in and sign-up must open as a modal.** Never navigate to a dedicated sign-in/sign-up page. Use Clerk's `<SignInButton mode="modal">` and `<SignUpButton mode="modal">`.
-- **`/dashboard` is a protected route.** Users who are not signed in must not be able to access it. Enforce this via Clerk middleware.
-- **Redirect signed-in users away from `/`.** If a signed-in user visits the homepage, redirect them to `/dashboard`.
+- **Clerk only.** Do not implement custom authentication logic, JWT handling, session management, or password storage.
+- **No alternative auth providers.** Do not integrate Auth.js (NextAuth), Supabase Auth, Firebase Auth, or any other authentication system.
+- **Use Clerk components and hooks.** Never build custom sign-in/sign-up forms from scratch.
+- **Modals for auth flows.** Sign-in and sign-up must always launch as modals, never as full-page routes.
 
-## Middleware
+## Protected Routes
 
-Use Clerk's `clerkMiddleware` in `middleware.ts` to protect routes and handle redirects:
+### Dashboard Protection
 
-```ts
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+The `/dashboard` route and all nested routes are **protected**. Users must be authenticated to access them.
 
-const isProtectedRoute = createRouteMatcher(["/dashboard(.*)"]);
-const isPublicHome = createRouteMatcher(["/"]);
+**Implementation:**
+- Use Clerk's middleware or `auth()` helper to verify authentication
+- Redirect unauthenticated users to the sign-in modal
 
-export default clerkMiddleware(async (auth, req) => {
-  const { userId } = await auth();
+### Homepage Redirect
 
-  if (isProtectedRoute(req) && !userId) {
-    return (await auth()).redirectToSignIn();
-  }
+If a logged-in user navigates to the homepage (`/`), automatically redirect them to `/dashboard`.
 
-  if (isPublicHome(req) && userId) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
-  }
-});
+**Implementation:**
+- Check authentication status on the homepage
+- Redirect authenticated users with `redirect("/dashboard")`
 
-export const config = {
-  matcher: ["/((?!_next|.*\\..*).*)"],
-};
-```
+## Common Patterns
 
-## Sign-in / Sign-up Buttons
-
-Always use Clerk's modal mode. Never link directly to `/sign-in` or `/sign-up` pages.
+### Server Component Authentication
 
 ```tsx
-import { SignInButton, SignUpButton } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 
-<SignInButton mode="modal">
-  <button>Sign in</button>
-</SignInButton>
+export default async function DashboardPage() {
+  const { userId } = await auth();
+  
+  if (!userId) {
+    redirect("/");
+  }
 
-<SignUpButton mode="modal">
-  <button>Sign up</button>
-</SignUpButton>
+  return <div>Protected content</div>;
+}
 ```
 
-## Accessing the Current User
+### Client Component Authentication
 
-- In **Server Components**: use `auth()` or `currentUser()` from `@clerk/nextjs/server`.
-- In **Client Components**: use `useUser()` or `useAuth()` from `@clerk/nextjs`.
+```tsx
+"use client";
+
+import { useUser } from "@clerk/nextjs";
+
+export function UserProfile() {
+  const { user, isLoaded } = useUser();
+
+  if (!isLoaded) return <div>Loading...</div>;
+  if (!user) return null;
+
+  return <div>Welcome, {user.firstName}!</div>;
+}
+```
+
+### Auth Components
+
+Use Clerk's prebuilt components for authentication UI:
+
+```tsx
+import { SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
+
+// Trigger sign-in modal
+<SignInButton mode="modal">
+  <button>Sign In</button>
+</SignInButton>
+
+// Trigger sign-up modal
+<SignUpButton mode="modal">
+  <button>Sign Up</button>
+</SignUpButton>
+
+// User menu with account management
+<UserButton afterSignOutUrl="/" />
+```
+
+## Key Clerk Hooks & Helpers
+
+| Hook/Helper | Usage |
+|-------------|-------|
+| `useUser()` | Access current user data (client) |
+| `useAuth()` | Access auth state and sign-out (client) |
+| `auth()` | Server-side authentication check |
+| `currentUser()` | Get full user object (server) |
+
+## References
+
+- [Clerk Next.js Documentation](https://clerk.com/docs/quickstarts/nextjs)
+- [App Router Authentication](https://clerk.com/docs/references/nextjs/overview)

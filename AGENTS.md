@@ -2,13 +2,27 @@
 
 This file provides coding standards and architectural guidance for LLMs working on this codebase. All rules below must be followed when generating or modifying code.
 
-Detailed instructions are split into topic-specific documents in the `/docs` directory. 
-ALWAYS refer to the relevant .md file BEFORE generating any code.
+---
 
-| Topic | File |
-|-------|------|
-| Authentication | [docs/auth.md](docs/auth.md) |
-| UI Components | [docs/ui.md](docs/ui.md) |
+## 🚨 CRITICAL REQUIREMENT — READ DOCS FIRST
+
+**YOU MUST READ THE RELEVANT DOCUMENTATION FILES BEFORE GENERATING ANY CODE.**
+
+Detailed, topic-specific instructions are located in the `/docs` directory. These files contain mandatory patterns, conventions, and implementation rules that CANNOT be inferred from this file alone.
+
+**WORKFLOW:**
+1. **Identify** which topic(s) your task involves (auth, UI, database, etc.)
+2. **Read** the corresponding `.md` file(s) from `/docs` using the `read_file` tool
+3. **Follow** the patterns and rules defined in those files
+4. **Then** generate code
+
+**Failure to read the relevant documentation will result in incorrect implementations.**
+
+| Topic | File | When to Read |
+|-------|------|--------------|
+| Authentication | [docs/auth.md](docs/auth.md) | Any auth-related features, user sessions, protected routes |
+| UI Components | [docs/ui.md](docs/ui.md) | Creating or modifying any UI components, forms, layouts |
+
 ---
 
 

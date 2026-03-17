@@ -2,17 +2,20 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+### Development Server
+
+To start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# or if port 3000 is already in use:
+npm run dev:clean
 ```
+
+The `dev:clean` command will automatically:
+- Kill any process using port 3000
+- Clean the `.next` build cache
+- Start the development server
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 

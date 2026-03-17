@@ -133,7 +133,7 @@ export function EditSessionDialog({ session, disabled = false }: EditSessionDial
         <DialogHeader>
           <DialogTitle>Edit Charging Session</DialogTitle>
           <DialogDescription>
-            Update the details of your charging session.
+            Update the end time of your charging session.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -145,7 +145,8 @@ export function EditSessionDialog({ session, disabled = false }: EditSessionDial
               value={stationId}
               onChange={(e) => setStationId(e.target.value)}
               required
-              disabled={loading}
+              disabled={true}
+              className="cursor-not-allowed opacity-60"
             />
           </div>
           <div className="space-y-2">
@@ -153,7 +154,7 @@ export function EditSessionDialog({ session, disabled = false }: EditSessionDial
             <DateTimePicker
               date={startDate}
               setDate={handleStartDateChange}
-              disabled={loading}
+              disabled={true}
             />
           </div>
           <div className="space-y-2">

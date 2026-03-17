@@ -5,6 +5,7 @@ import { getUserLoadingSessions } from "@/data/loading-sessions";
 import { CreateSessionDialog } from "@/components/create-session-dialog";
 import { EditSessionDialog } from "@/components/edit-session-dialog";
 import { DeleteSessionDialog } from "@/components/delete-session-dialog";
+import { StationTimeline } from "@/components/station-timeline";
 
 export default async function DashboardPage() {
   const { userId } = await auth();
@@ -52,7 +53,7 @@ export default async function DashboardPage() {
               Active Sessions
             </div>
             <div className="text-3xl font-bold text-white">{activeSessions.length}</div>
-            <p className="mt-1 text-sm text-blue-400">Currently charging</p>
+            <p className="mt-1 text-sm text-emerald-400">Currently charging</p>
           </div>
 
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 backdrop-blur">
@@ -61,7 +62,7 @@ export default async function DashboardPage() {
               Completed
             </div>
             <div className="text-3xl font-bold text-white">{completedSessions.length}</div>
-            <p className="mt-1 text-sm text-emerald-400">Sessions finished</p>
+            <p className="mt-1 text-sm text-zinc-400">Sessions finished</p>
           </div>
 
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 backdrop-blur">
@@ -75,6 +76,13 @@ export default async function DashboardPage() {
             <p className="mt-1 text-sm text-zinc-400">Different locations</p>
           </div>
         </div>
+
+        {/* Station Timeline Visualization */}
+        {sessions.length > 0 && (
+          <div className="mb-12">
+            <StationTimeline sessions={sessions} />
+          </div>
+        )}
 
         {/* Main Content Area */}
         {sessions.length === 0 ? (
@@ -101,7 +109,6 @@ export default async function DashboardPage() {
               ) : (
                 <div className="space-y-3">
                   {completedSessions.map((session) => {
-                    const isStartInPast = new Date(session.startTime) < new Date();
                     return (
                     <div
                       key={session.id}
@@ -151,7 +158,6 @@ export default async function DashboardPage() {
               ) : (
                 <div className="space-y-3">
                   {activeSessions.map((session) => {
-                    const isStartInPast = new Date(session.startTime) < new Date();
                     return (
                     <div
                       key={session.id}
@@ -174,8 +180,7 @@ export default async function DashboardPage() {
                         Started: {new Date(session.startTime).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
                       </div>
                       <div className="ml-8 flex gap-2">
-                        <EditSessionDialog session={session} disabled={isStartInPast} />
-                        <DeleteSessionDialog session={session} disabled={isStartInPast} />
+                        <EditSessionDialog session={session} />
                       </div>
                     </div>
                     );

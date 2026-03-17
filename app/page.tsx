@@ -155,7 +155,7 @@ export default async function Home() {
       {/* Footer */}
       <footer className="border-t border-zinc-800 px-6 py-12">
         <div className="mx-auto max-w-7xl text-center text-sm text-zinc-500">
-          <p>© {new Date().getFullYear()} Laadpalen App. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Charging Stations App. All rights reserved.</p>
         </div>
       </footer>
     </div>

@@ -1,10 +1,10 @@
-# Laadpalen App - AI Agent Instructions
+# Charging Stations App - AI Agent Instructions
 
-This document serves as the main orchestration file for AI coding assistants working on the Laadpalen App project.
+This document serves as the main orchestration file for AI coding assistants working on the Charging Stations App project.
 
 ## Purpose
 
-This project is a charging station (laadpalen) management application built with Next.js, TypeScript, and modern web technologies. When providing code assistance, always adhere to the project's established patterns and conventions.
+This project is a charging station management application built with Next.js, TypeScript, and modern web technologies. When providing code assistance, always adhere to the project's established patterns and conventions.
 
 ## Quick Reference
 

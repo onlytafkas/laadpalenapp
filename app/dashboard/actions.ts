@@ -2,8 +2,9 @@
 
 import { z } from "zod";
 import { auth } from "@clerk/nextjs/server";
-import { createLoadingSession, updateLoadingSession, deleteLoadingSession, checkSessionOverlap, findNextAvailableStartTime } from "@/data/loading-sessions";
+import { createLoadingSession, updateLoadingSession, deleteLoadingSession, getSessionById, checkSessionOverlap, findNextAvailableStartTime, checkCooldownConstraint } from "@/data/loading-sessions";
 import { createStation, updateStation, deleteStation, checkStationHasSessions } from "@/data/stations";
+import { createUser, updateUser, deactivateUser, activateUser, getUserInfo } from "@/data/usersinfo";
 import { revalidatePath } from "next/cache";
 
 const createSessionSchema = z.object({
@@ -35,16 +36,38 @@ export async function createSession(data: CreateSessionInput) {
     return { error: "Invalid input" };
   }
 
-  // 3. Check for session overlap and auto-adjust if needed
-  let adjustmentMessage: string | undefined;
-  try {
-    let startTime = new Date(data.startTime);
-    let endTime = data.endTime ? new Date(data.endTime) : null;
+  // 3. Check that the user has a registered userinfo record
+  const userInfo = await getUserInfo(userId);
+  if (!userInfo) {
+    return { error: "Your account is not registered in the system. Please contact an administrator to add your user information before making a reservation." };
+  }
 
-    // Calculate the duration to preserve it after adjustment
+  // 4. Check that the session is not beyond the day after today
+  const startTime = new Date(data.startTime);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(23, 59, 59, 999);
+  if (startTime > tomorrow) {
+    return { error: "You can only reserve up to the day after today." };
+  }
+
+  // 4. Check cooldown: user must wait 4 hours after their last session end time
+  try {
+    const cooldownCheck = await checkCooldownConstraint(userId, new Date(data.startTime));
+    if (!cooldownCheck.valid) {
+      return { error: cooldownCheck.message || "You must wait 4 hours after your last session ends before reserving again." };
+    }
+  } catch (error) {
+    console.error("Failed to check cooldown constraint:", error);
+    return { error: "Failed to validate reservation cooldown" };
+  }
+
+  // 3b. Check for session overlap and ask for confirmation if adjustment needed
+  try {
+    const startTime = new Date(data.startTime);
+    const endTime = data.endTime ? new Date(data.endTime) : null;
     const durationMs = endTime ? endTime.getTime() - startTime.getTime() : 0;
 
-    // First check if there's an overlap
     const hasOverlap = await checkSessionOverlap(
       data.stationId,
       startTime,
@@ -52,40 +75,31 @@ export async function createSession(data: CreateSessionInput) {
     );
 
     if (hasOverlap) {
-      // Find the next available start time
       const nextAvailableStart = await findNextAvailableStartTime(
         data.stationId,
         startTime
       );
 
       if (nextAvailableStart) {
-        // Auto-adjust to the next available time
-        startTime = nextAvailableStart;
-        
-        // Recalculate end time with the same duration
-        if (endTime) {
-          endTime = new Date(startTime.getTime() + durationMs);
-        }
-        
-        // Format the adjusted time for user display (HH:MM)
-        const adjustedTime = startTime.toLocaleTimeString('en-US', { 
-          hour: '2-digit', 
+        const adjustedEndTime = endTime
+          ? new Date(nextAvailableStart.getTime() + durationMs)
+          : null;
+
+        const adjustedTimeLabel = nextAvailableStart.toLocaleTimeString('en-US', {
+          hour: '2-digit',
           minute: '2-digit',
-          hour12: false 
+          hour12: false,
         });
-        
-        // Update the data with adjusted times
-        data.startTime = startTime.toISOString();
-        if (endTime) {
-          data.endTime = endTime.toISOString();
-        }
-        
-        // Set message to return with success
-        adjustmentMessage = `Your session was automatically adjusted to start at ${adjustedTime} to avoid conflicts.`;
+
+        return {
+          needsConfirmation: true as const,
+          adjustedStartTime: nextAvailableStart.toISOString(),
+          adjustedEndTime: adjustedEndTime ? adjustedEndTime.toISOString() : data.endTime,
+          message: `This time slot is taken. The next available slot starts at ${adjustedTimeLabel}. Do you want to reserve at this time instead?`,
+        };
       } else {
-        // No available time slot found
-        return { 
-          error: "This time slot conflicts with another session. Please choose a different time." 
+        return {
+          error: "This time slot conflicts with another session. Please choose a different time.",
         };
       }
     }
@@ -106,7 +120,7 @@ export async function createSession(data: CreateSessionInput) {
     // 5. Revalidate dashboard to show new session
     revalidatePath("/dashboard");
 
-    return { success: true, data: session, message: adjustmentMessage };
+    return { success: true, data: session };
   } catch (error) {
     console.error("Failed to create loading session:", error);
     return { error: "Failed to create charging session" };
@@ -134,7 +148,19 @@ export async function updateSession(data: UpdateSessionInput) {
     return { error: "Unauthorized" };
   }
 
-  // 2. Validate input
+  // 2. Check ownership or admin permission
+  const [existingSession, callerInfo] = await Promise.all([
+    getSessionById(data.id),
+    getUserInfo(userId),
+  ]);
+  if (!existingSession) {
+    return { error: "Session not found" };
+  }
+  if (existingSession.userId !== userId && !callerInfo?.isAdmin) {
+    return { error: "Forbidden" };
+  }
+
+  // 3. Validate input
   try {
     updateSessionSchema.parse(data);
   } catch (error) {
@@ -144,16 +170,12 @@ export async function updateSession(data: UpdateSessionInput) {
     return { error: "Invalid input" };
   }
 
-  // 3. Check for session overlap and auto-adjust if needed
-  let adjustmentMessage: string | undefined;
+  // 3. Check for session overlap and ask for confirmation if adjustment needed
   try {
-    let startTime = new Date(data.startTime);
-    let endTime = data.endTime ? new Date(data.endTime) : null;
-
-    // Calculate the duration to preserve it after adjustment
+    const startTime = new Date(data.startTime);
+    const endTime = data.endTime ? new Date(data.endTime) : null;
     const durationMs = endTime ? endTime.getTime() - startTime.getTime() : 0;
 
-    // First check if there's an overlap
     const hasOverlap = await checkSessionOverlap(
       data.stationId,
       startTime,
@@ -162,7 +184,6 @@ export async function updateSession(data: UpdateSessionInput) {
     );
 
     if (hasOverlap) {
-      // Find the next available start time
       const nextAvailableStart = await findNextAvailableStartTime(
         data.stationId,
         startTime,
@@ -170,33 +191,25 @@ export async function updateSession(data: UpdateSessionInput) {
       );
 
       if (nextAvailableStart) {
-        // Auto-adjust to the next available time
-        startTime = nextAvailableStart;
-        
-        // Recalculate end time with the same duration
-        if (endTime) {
-          endTime = new Date(startTime.getTime() + durationMs);
-        }
-        
-        // Format the adjusted time for user display (HH:MM)
-        const adjustedTime = startTime.toLocaleTimeString('en-US', { 
-          hour: '2-digit', 
+        const adjustedEndTime = endTime
+          ? new Date(nextAvailableStart.getTime() + durationMs)
+          : null;
+
+        const adjustedTimeLabel = nextAvailableStart.toLocaleTimeString('en-US', {
+          hour: '2-digit',
           minute: '2-digit',
-          hour12: false 
+          hour12: false,
         });
-        
-        // Update the data with adjusted times
-        data.startTime = startTime.toISOString();
-        if (endTime) {
-          data.endTime = endTime.toISOString();
-        }
-        
-        // Set message to return with success
-        adjustmentMessage = `Your session was automatically adjusted to start at ${adjustedTime} to avoid conflicts.`;
+
+        return {
+          needsConfirmation: true as const,
+          adjustedStartTime: nextAvailableStart.toISOString(),
+          adjustedEndTime: adjustedEndTime ? adjustedEndTime.toISOString() : data.endTime,
+          message: `This time slot is taken. The next available slot starts at ${adjustedTimeLabel}. Do you want to update to this time instead?`,
+        };
       } else {
-        // No available time slot found
-        return { 
-          error: "This time slot conflicts with another session. Please choose a different time." 
+        return {
+          error: "This time slot conflicts with another session. Please choose a different time.",
         };
       }
     }
@@ -217,7 +230,7 @@ export async function updateSession(data: UpdateSessionInput) {
     // 5. Revalidate dashboard to show updated session
     revalidatePath("/dashboard");
 
-    return { success: true, data: session, message: adjustmentMessage };
+    return { success: true, data: session };
   } catch (error) {
     console.error("Failed to update loading session:", error);
     return { error: "Failed to update charging session" };
@@ -231,7 +244,19 @@ export async function deleteSession(id: number) {
     return { error: "Unauthorized" };
   }
 
-  // 2. Delete session via data helper
+  // 2. Check ownership or admin permission
+  const [existingSession, callerInfo] = await Promise.all([
+    getSessionById(id),
+    getUserInfo(userId),
+  ]);
+  if (!existingSession) {
+    return { error: "Session not found" };
+  }
+  if (existingSession.userId !== userId && !callerInfo?.isAdmin) {
+    return { error: "Forbidden" };
+  }
+
+  // 3. Delete session via data helper
   try {
     await deleteLoadingSession(id);
 
@@ -264,7 +289,13 @@ export async function createStationAction(data: CreateStationInput) {
     return { error: "Unauthorized" };
   }
 
-  // 2. Validate input
+  // 2. Check admin permission
+  const callerInfo = await getUserInfo(userId);
+  if (!callerInfo?.isAdmin) {
+    return { error: "Forbidden: Admin access required" };
+  }
+
+  // 3. Validate input
   try {
     createStationSchema.parse(data);
   } catch (error) {
@@ -310,7 +341,13 @@ export async function updateStationAction(data: UpdateStationInput) {
     return { error: "Unauthorized" };
   }
 
-  // 2. Validate input
+  // 2. Check admin permission
+  const callerInfo = await getUserInfo(userId);
+  if (!callerInfo?.isAdmin) {
+    return { error: "Forbidden: Admin access required" };
+  }
+
+  // 3. Validate input
   try {
     updateStationSchema.parse(data);
   } catch (error) {
@@ -345,7 +382,13 @@ export async function deleteStationAction(id: number) {
     return { error: "Unauthorized" };
   }
 
-  // 2. Check if station has any sessions
+  // 2. Check admin permission
+  const callerInfo = await getUserInfo(userId);
+  if (!callerInfo?.isAdmin) {
+    return { error: "Forbidden: Admin access required" };
+  }
+
+  // 3. Check if station has any sessions
   try {
     const hasSessions = await checkStationHasSessions(id);
     if (hasSessions) {
@@ -362,5 +405,168 @@ export async function deleteStationAction(id: number) {
   } catch (error) {
     console.error("Failed to delete station:", error);
     return { error: "Failed to delete station" };
+  }
+}
+
+// ==================== User Actions ====================
+
+const createUserSchema = z.object({
+  userId: z.string().min(1, "User ID is required"),
+  carNumberPlate: z.string().min(1, "Car number plate is required").max(20),
+});
+
+interface CreateUserInput {
+  userId: string;
+  carNumberPlate: string;
+}
+
+export async function createUserAction(data: CreateUserInput) {
+  // 1. Check authentication
+  const { userId } = await auth();
+  if (!userId) {
+    return { error: "Unauthorized" };
+  }
+
+  // 2. Check admin permission
+  const callerInfo = await getUserInfo(userId);
+  if (!callerInfo?.isAdmin) {
+    return { error: "Forbidden: Admin access required" };
+  }
+
+  // 3. Validate input
+  try {
+    createUserSchema.parse(data);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { error: error.issues[0].message };
+    }
+    return { error: "Invalid input" };
+  }
+
+  // 3. Create user via data helper
+  try {
+    const user = await createUser({
+      userId: data.userId,
+      carNumberPlate: data.carNumberPlate,
+      isActive: true,
+    });
+
+    // 4. Revalidate dashboard to show new user
+    revalidatePath("/dashboard");
+
+    return { success: true, data: user };
+  } catch (error) {
+    console.error("Failed to create user:", error);
+    return { error: "Failed to create user. User ID or car number plate may already exist." };
+  }
+}
+
+const updateUserSchema = z.object({
+  userId: z.string().min(1, "User ID is required"),
+  carNumberPlate: z.string().min(1, "Car number plate is required").max(20),
+  isActive: z.boolean(),
+  isAdmin: z.boolean(),
+});
+
+interface UpdateUserInput {
+  userId: string;
+  carNumberPlate: string;
+  isActive: boolean;
+  isAdmin: boolean;
+}
+
+export async function updateUserAction(data: UpdateUserInput) {
+  // 1. Check authentication
+  const { userId } = await auth();
+  if (!userId) {
+    return { error: "Unauthorized" };
+  }
+
+  // 2. Check admin permission
+  const callerInfo = await getUserInfo(userId);
+  if (!callerInfo?.isAdmin) {
+    return { error: "Forbidden: Admin access required" };
+  }
+
+  // 3. Validate input
+  try {
+    updateUserSchema.parse(data);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { error: error.issues[0].message };
+    }
+    return { error: "Invalid input" };
+  }
+
+  // 3. Update user via data helper
+  try {
+    const user = await updateUser({
+      userId: data.userId,
+      carNumberPlate: data.carNumberPlate,
+      isActive: data.isActive,
+      isAdmin: data.isAdmin,
+    });
+
+    // 4. Revalidate dashboard to show updated user
+    revalidatePath("/dashboard");
+
+    return { success: true, data: user };
+  } catch (error) {
+    console.error("Failed to update user:", error);
+    return { error: "Failed to update user. Car number plate may already exist." };
+  }
+}
+
+export async function deactivateUserAction(userId: string) {
+  // 1. Check authentication
+  const { userId: authUserId } = await auth();
+  if (!authUserId) {
+    return { error: "Unauthorized" };
+  }
+
+  // 2. Check admin permission
+  const callerInfo = await getUserInfo(authUserId);
+  if (!callerInfo?.isAdmin) {
+    return { error: "Forbidden: Admin access required" };
+  }
+
+  // 3. Deactivate user via data helper
+  try {
+    await deactivateUser(userId);
+
+    // 3. Revalidate dashboard to show updated status
+    revalidatePath("/dashboard");
+
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to deactivate user:", error);
+    return { error: "Failed to deactivate user" };
+  }
+}
+
+export async function activateUserAction(userId: string) {
+  // 1. Check authentication
+  const { userId: authUserId } = await auth();
+  if (!authUserId) {
+    return { error: "Unauthorized" };
+  }
+
+  // 2. Check admin permission
+  const callerInfo = await getUserInfo(authUserId);
+  if (!callerInfo?.isAdmin) {
+    return { error: "Forbidden: Admin access required" };
+  }
+
+  // 3. Activate user via data helper
+  try {
+    await activateUser(userId);
+
+    // 3. Revalidate dashboard to show updated status
+    revalidatePath("/dashboard");
+
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to activate user:", error);
+    return { error: "Failed to activate user" };
   }
 }

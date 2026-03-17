@@ -55,7 +55,11 @@ export function EditSessionDialog({
   const [loading, setLoading] = useState(false);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pendingAdjustment, setPendingAdjustment] = useState<{
+    adjustedStartTime: string;
+    adjustedEndTime: string;
+    message: string;
+  } | null>(null);
 
   // Use external control if provided, otherwise use internal state
   const open = externalOpen !== undefined ? externalOpen : internalOpen;
@@ -117,11 +121,9 @@ export function EditSessionDialog({
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
     if (newOpen) {
-      // Reset form to current session values when opening
       setStationId(session.stationId);
       setStartDate(new Date(session.startTime));
       
-      // Recalculate initial duration
       const start = new Date(session.startTime).getTime();
       const end = session.endTime ? new Date(session.endTime).getTime() : new Date().getTime();
       const minutes = Math.round((end - start) / (1000 * 60));
@@ -131,7 +133,7 @@ export function EditSessionDialog({
       else setDuration("180");
       
       setServerError(null);
-      setSuccessMessage(null);
+      setPendingAdjustment(null);
       setHasUserInteracted(false);
     }
   };
@@ -139,11 +141,13 @@ export function EditSessionDialog({
   const handleStartDateChange = (date: Date | undefined) => {
     setStartDate(date);
     setHasUserInteracted(true);
+    setServerError(null); // Clear server error when user modifies input
   };
 
   const handleDurationChange = (value: string) => {
     setDuration(value);
     setHasUserInteracted(true);
+    setServerError(null); // Clear server error when user modifies input
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -176,25 +180,48 @@ export function EditSessionDialog({
       endTime: endDate.toISOString(),
     });
 
-    if (result.error) {
+    if ('needsConfirmation' in result && result.needsConfirmation) {
+      setPendingAdjustment({
+        adjustedStartTime: result.adjustedStartTime,
+        adjustedEndTime: result.adjustedEndTime,
+        message: result.message,
+      });
+      setLoading(false);
+    } else if (result.error) {
       setServerError(result.error);
       setLoading(false);
     } else {
-      // Show success message if time was adjusted
-      if (result.message) {
-        setSuccessMessage(result.message);
-        setServerError(null);
-        // Keep dialog open briefly to show message, then close
-        setTimeout(() => {
-          setOpen(false);
-          setLoading(false);
-          setSuccessMessage(null);
-        }, 2500);
-      } else {
-        // No adjustment - close immediately
-        setOpen(false);
-        setLoading(false);
-      }
+      setOpen(false);
+      setLoading(false);
+    }
+  };
+
+  const handleConfirmAdjustment = async () => {
+    if (!pendingAdjustment) return;
+    setLoading(true);
+    const adj = pendingAdjustment;
+    setPendingAdjustment(null);
+
+    const result = await updateSession({
+      id: session.id,
+      stationId,
+      startTime: adj.adjustedStartTime,
+      endTime: adj.adjustedEndTime,
+    });
+
+    if ('needsConfirmation' in result && result.needsConfirmation) {
+      setPendingAdjustment({
+        adjustedStartTime: result.adjustedStartTime,
+        adjustedEndTime: result.adjustedEndTime,
+        message: result.message,
+      });
+      setLoading(false);
+    } else if (result.error) {
+      setServerError(result.error);
+      setLoading(false);
+    } else {
+      setOpen(false);
+      setLoading(false);
     }
   };
 
@@ -220,6 +247,29 @@ export function EditSessionDialog({
             Update the details of your charging session.
           </DialogDescription>
         </DialogHeader>
+        {pendingAdjustment ? (
+          <div className="space-y-4">
+            <p className="text-sm text-amber-400">{pendingAdjustment.message}</p>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPendingAdjustment(null)}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="bg-emerald-600 hover:bg-emerald-500"
+                onClick={handleConfirmAdjustment}
+                disabled={loading}
+              >
+                {loading ? "Updating..." : "Confirm New Time"}
+              </Button>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="edit-stationId">Station</Label>
@@ -278,9 +328,6 @@ export function EditSessionDialog({
           {error && (
             <p className="text-sm text-red-400">{error}</p>
           )}
-          {successMessage && (
-            <p className="text-sm text-emerald-400">{successMessage}</p>
-          )}
           <div className="flex justify-end gap-2">
             <Button
               type="button"
@@ -299,6 +346,7 @@ export function EditSessionDialog({
             </Button>
           </div>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   );

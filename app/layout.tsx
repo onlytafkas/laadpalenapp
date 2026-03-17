@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Laadpalen App - Charging Station Management Platform",
+  title: "Charging Stations App - Charging Station Management Platform",
   description: "Comprehensive charging station management platform for monitoring, analytics, and control of your EV charging infrastructure.",
 };
 

@@ -30,17 +30,29 @@ type Station = {
 
 type CreateSessionDialogProps = {
   stations: Station[];
+  hasUserInfo: boolean;
 };
 
-export function CreateSessionDialog({ stations }: CreateSessionDialogProps) {
+export function CreateSessionDialog({ stations, hasUserInfo }: CreateSessionDialogProps) {
+  // Helper function to get default start time (5 minutes from now)
+  const getDefaultStartTime = () => {
+    const fiveMinutesFromNow = new Date();
+    fiveMinutesFromNow.setMinutes(fiveMinutesFromNow.getMinutes() + 5);
+    return fiveMinutesFromNow;
+  };
+
   const [open, setOpen] = useState(false);
   const [stationId, setStationId] = useState<number | null>(null);
-  const [startDate, setStartDate] = useState<Date | undefined>(new Date());
+  const [startDate, setStartDate] = useState<Date | undefined>(getDefaultStartTime());
   const [duration, setDuration] = useState<string>("60"); // Default to 1 hour (in minutes)
   const [loading, setLoading] = useState(false);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pendingAdjustment, setPendingAdjustment] = useState<{
+    adjustedStartTime: string;
+    adjustedEndTime: string;
+    message: string;
+  } | null>(null);
 
   // Calculate end date based on start date and duration
   const endDate = useMemo(() => {
@@ -80,11 +92,18 @@ export function CreateSessionDialog({ stations }: CreateSessionDialogProps) {
   const handleStartDateChange = (date: Date | undefined) => {
     setStartDate(date);
     setHasUserInteracted(true);
+    setServerError(null); // Clear server error when user modifies input
   };
 
   const handleDurationChange = (value: string) => {
     setDuration(value);
     setHasUserInteracted(true);
+    setServerError(null); // Clear server error when user modifies input
+  };
+
+  const handleStationChange = (value: string) => {
+    setStationId(Number(value));
+    setServerError(null); // Clear server error when station is selected
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -116,59 +135,93 @@ export function CreateSessionDialog({ stations }: CreateSessionDialogProps) {
       return;
     }
 
-    const result = await createSession({ 
+    const result = await createSession({
       stationId,
       startTime: startDate.toISOString(),
       endTime: endDate.toISOString(),
     });
 
-    if (result.error) {
+    if ('needsConfirmation' in result && result.needsConfirmation) {
+      setPendingAdjustment({
+        adjustedStartTime: result.adjustedStartTime,
+        adjustedEndTime: result.adjustedEndTime,
+        message: result.message,
+      });
+      setLoading(false);
+    } else if (result.error) {
       setServerError(result.error);
       setLoading(false);
     } else {
-      // Show success message if time was adjusted
-      if (result.message) {
-        setSuccessMessage(result.message);
-        setServerError(null);
-        // Keep dialog open briefly to show message, then close
-        setTimeout(() => {
-          setOpen(false);
-          setStationId(null);
-          setStartDate(new Date());
-          setDuration("60");
-          setLoading(false);
-          setHasUserInteracted(false);
-          setSuccessMessage(null);
-        }, 2500);
-      } else {
-        // No adjustment - close immediately
-        setOpen(false);
-        setStationId(null);
-        setStartDate(new Date());
-        setDuration("60");
-        setLoading(false);
-        setHasUserInteracted(false);
-      }
+      resetAndClose();
     }
+  };
+
+  const handleConfirmAdjustment = async () => {
+    if (!pendingAdjustment || !stationId) return;
+    setLoading(true);
+    const adj = pendingAdjustment;
+    setPendingAdjustment(null);
+
+    const result = await createSession({
+      stationId,
+      startTime: adj.adjustedStartTime,
+      endTime: adj.adjustedEndTime,
+    });
+
+    if ('needsConfirmation' in result && result.needsConfirmation) {
+      // Race condition: another booking appeared — ask again
+      setPendingAdjustment({
+        adjustedStartTime: result.adjustedStartTime,
+        adjustedEndTime: result.adjustedEndTime,
+        message: result.message,
+      });
+      setLoading(false);
+    } else if (result.error) {
+      setServerError(result.error);
+      setLoading(false);
+    } else {
+      resetAndClose();
+    }
+  };
+
+  const resetAndClose = () => {
+    setOpen(false);
+    setStationId(null);
+    setStartDate(getDefaultStartTime());
+    setDuration("60");
+    setLoading(false);
+    setHasUserInteracted(false);
+    setPendingAdjustment(null);
+    setServerError(null);
   };
 
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
     if (!newOpen) {
-      // Reset on close
       setServerError(null);
-      setSuccessMessage(null);
+      setPendingAdjustment(null);
       setHasUserInteracted(false);
+    } else {
+      setStartDate(getDefaultStartTime());
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button className="gap-2 bg-emerald-600 hover:bg-emerald-500">
-          <Zap className="h-4 w-4" />
-          Reserve Session
-        </Button>
+        <span
+          title={!hasUserInfo ? "Your account is not registered in the system. Please contact an administrator to add your user information." : undefined}
+          className={!hasUserInfo ? "cursor-not-allowed" : undefined}
+        >
+          <Button
+            className="gap-2 bg-emerald-600 hover:bg-emerald-500"
+            disabled={!hasUserInfo}
+            tabIndex={!hasUserInfo ? -1 : undefined}
+          >
+            <Zap className="h-4 w-4" />
+            Reserve Session
+          </Button>
+        </span>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -177,12 +230,35 @@ export function CreateSessionDialog({ stations }: CreateSessionDialogProps) {
             Select a station to reserve a new charging session.
           </DialogDescription>
         </DialogHeader>
+        {pendingAdjustment ? (
+          <div className="space-y-4">
+            <p className="text-sm text-amber-400">{pendingAdjustment.message}</p>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPendingAdjustment(null)}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="bg-emerald-600 hover:bg-emerald-500"
+                onClick={handleConfirmAdjustment}
+                disabled={loading}
+              >
+                {loading ? "Reserving..." : "Confirm New Time"}
+              </Button>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="stationId">Station</Label>
             <Select
               value={stationId?.toString() ?? ""}
-              onValueChange={(value) => setStationId(Number(value))}
+              onValueChange={handleStationChange}
               disabled={loading}
             >
               <SelectTrigger id="stationId">
@@ -235,9 +311,6 @@ export function CreateSessionDialog({ stations }: CreateSessionDialogProps) {
           {error && (
             <p className="text-sm text-red-400">{error}</p>
           )}
-          {successMessage && (
-            <p className="text-sm text-emerald-400">{successMessage}</p>
-          )}
           <div className="flex justify-end gap-2">
             <Button
               type="button"
@@ -256,6 +329,7 @@ export function CreateSessionDialog({ stations }: CreateSessionDialogProps) {
             </Button>
           </div>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   );

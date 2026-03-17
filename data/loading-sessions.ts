@@ -2,6 +2,13 @@ import { db } from "@/db";
 import { sessions } from "@/db/schema";
 import { eq, desc, and, ne, gt } from "drizzle-orm";
 
+/** Strips seconds and milliseconds so timestamps are stored at minute precision. */
+function toMinute(date: Date): Date {
+  const d = new Date(date);
+  d.setSeconds(0, 0);
+  return d;
+}
+
 export async function getUserLoadingSessions(userId: string) {
   const userSessions = await db.query.sessions.findMany({
     where: eq(sessions.userId, userId),
@@ -12,6 +19,15 @@ export async function getUserLoadingSessions(userId: string) {
   });
 
   return userSessions;
+}
+
+export async function getAllLoadingSessions() {
+  return db.query.sessions.findMany({
+    with: {
+      station: true,
+    },
+    orderBy: [desc(sessions.startTime)],
+  });
 }
 
 interface CreateLoadingSessionInput {
@@ -30,11 +46,11 @@ export async function createLoadingSession(data: CreateLoadingSessionInput) {
   } = {
     userId: data.userId,
     stationId: data.stationId,
-    startTime: data.startTime ? new Date(data.startTime) : new Date(),
+    startTime: toMinute(data.startTime ? new Date(data.startTime) : new Date()),
   };
 
   if (data.endTime) {
-    values.endTime = new Date(data.endTime);
+    values.endTime = toMinute(new Date(data.endTime));
   }
 
   const [session] = await db
@@ -62,11 +78,11 @@ export async function updateLoadingSession(data: UpdateLoadingSessionInput) {
   };
 
   if (data.startTime) {
-    values.startTime = new Date(data.startTime);
+    values.startTime = toMinute(new Date(data.startTime));
   }
 
   if (data.endTime !== undefined) {
-    values.endTime = data.endTime ? new Date(data.endTime) : null;
+    values.endTime = data.endTime ? toMinute(new Date(data.endTime)) : null;
   }
 
   const [session] = await db
@@ -82,6 +98,13 @@ export async function deleteLoadingSession(id: number) {
   await db
     .delete(sessions)
     .where(eq(sessions.id, id));
+}
+
+export async function getSessionById(id: number) {
+  const session = await db.query.sessions.findFirst({
+    where: eq(sessions.id, id),
+  });
+  return session ?? null;
 }
 
 /**
@@ -186,12 +209,13 @@ export async function findMaxEndTime(
 }
 
 /**
- * Finds the next available start time for a session at a station
- * Considers sessions that overlap with or are too close to the requested start time
+ * Finds the next available start time for a session at a station.
+ * Walks forward through consecutive/chained sessions (each 5 min apart) until
+ * a truly free slot is found, so back-to-back reservations are all accounted for.
  * @param stationId The station ID to check
  * @param requestedStartTime The desired start time
  * @param excludeSessionId Session ID to exclude from check (for updates)
- * @returns The next available start time (5 minutes after conflicting sessions), or null if requested time is available
+ * @returns The next available start time, or null if the requested time is already free
  */
 export async function findNextAvailableStartTime(
   stationId: number,
@@ -212,31 +236,104 @@ export async function findNextAvailableStartTime(
     orderBy: [sessions.startTime],
   });
 
-  let latestConflictingEndTime: Date | null = null;
+  // Iteratively advance past consecutive conflicts.
+  // e.g. if session A ends at 19:00 and session B starts at 19:05 (ends 21:05),
+  // a request for 17:30 must skip both and land at 21:10, not just 19:05.
+  let candidateTime = new Date(requestedStartTime);
 
-  // Check for sessions that conflict with the requested start time
-  for (const existingSession of existingSessions) {
-    const existingStart = new Date(existingSession.startTime);
-    const existingEnd = existingSession.endTime
-      ? new Date(existingSession.endTime)
-      : new Date(existingStart.getTime() + FIVE_MINUTES_MS);
+  for (let i = 0; i <= existingSessions.length; i++) {
+    let latestConflictingEndTime: Date | null = null;
 
-    // A session conflicts if it ends after (or within 5 minutes before) the requested start time
-    // AND starts before (or within 5 minutes after) the requested start time
-    const conflictThreshold = new Date(requestedStartTime.getTime() + FIVE_MINUTES_MS);
-    
-    if (existingEnd > requestedStartTime && existingStart < conflictThreshold) {
-      // This session conflicts - track the latest ending time
-      if (!latestConflictingEndTime || existingEnd > latestConflictingEndTime) {
-        latestConflictingEndTime = existingEnd;
+    for (const existingSession of existingSessions) {
+      const existingStart = new Date(existingSession.startTime);
+      const existingEnd = existingSession.endTime
+        ? new Date(existingSession.endTime)
+        : new Date(existingStart.getTime() + FIVE_MINUTES_MS);
+
+      // Conflict: the existing session ends after candidateTime AND starts within
+      // 5 minutes after candidateTime (i.e. there is no 5-min gap).
+      const conflictThreshold = new Date(candidateTime.getTime() + FIVE_MINUTES_MS);
+      if (existingEnd > candidateTime && existingStart < conflictThreshold) {
+        if (!latestConflictingEndTime || existingEnd > latestConflictingEndTime) {
+          latestConflictingEndTime = existingEnd;
+        }
+      }
+    }
+
+    if (!latestConflictingEndTime) {
+      break; // No conflict at candidateTime — we found the free slot
+    }
+
+    // Advance past this conflict and try again
+    candidateTime = new Date(latestConflictingEndTime.getTime() + FIVE_MINUTES_MS);
+  }
+
+  // If candidateTime never moved, the original time was already free
+  if (candidateTime.getTime() === requestedStartTime.getTime()) {
+    return null;
+  }
+
+  return candidateTime;
+}
+
+/**
+ * Checks if the user must wait before creating a new reservation.
+ * The proposed start time must be at least 4 hours after the user's last reservation end time.
+ * @param userId The user ID to check
+ * @param proposedStartTime The start time of the new session being created
+ * @param excludeSessionId Optional session ID to exclude (for updates)
+ * @returns { valid: boolean, message?: string, nextAvailableTime?: Date }
+ */
+export async function checkCooldownConstraint(
+  userId: string,
+  proposedStartTime: Date,
+  excludeSessionId?: number
+): Promise<{ valid: boolean; message?: string; nextAvailableTime?: Date }> {
+  const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+
+  const whereConditions = [eq(sessions.userId, userId)];
+  if (excludeSessionId !== undefined) {
+    whereConditions.push(ne(sessions.id, excludeSessionId));
+  }
+
+  const userSessions = await db.query.sessions.findMany({
+    where: and(...whereConditions),
+  });
+
+  if (userSessions.length === 0) {
+    return { valid: true };
+  }
+
+  // Find the latest end time among all user sessions
+  let latestEndTime: Date | null = null;
+  for (const s of userSessions) {
+    if (s.endTime) {
+      const endTime = new Date(s.endTime);
+      if (!latestEndTime || endTime > latestEndTime) {
+        latestEndTime = endTime;
       }
     }
   }
 
-  // If there's a conflict, return 5 minutes after the latest conflicting session ends
-  if (latestConflictingEndTime) {
-    return new Date(latestConflictingEndTime.getTime() + FIVE_MINUTES_MS);
+  if (!latestEndTime) {
+    return { valid: true }; // No sessions with a known end time
   }
 
-  return null; // No conflict, requested time is available
+  const nextAvailableTime = new Date(latestEndTime.getTime() + FOUR_HOURS_MS);
+
+  if (proposedStartTime < nextAvailableTime) {
+    return {
+      valid: false,
+      message: `You must wait 4 hours after your last session ends. You can reserve again from ${nextAvailableTime.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })}.`,
+      nextAvailableTime,
+    };
+  }
+
+  return { valid: true };
 }

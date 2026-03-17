@@ -1,7 +1,7 @@
 "use client";
 
-import { Clock } from "lucide-react";
-import { useMemo, useState, useEffect, useRef } from "react";
+import { Clock, ChevronLeft, ChevronRight } from "lucide-react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { EditSessionDialog } from "@/components/edit-session-dialog";
 
 type Station = {
@@ -22,13 +22,40 @@ type Session = {
 type StationTimelineProps = {
   sessions: Session[];
   stations: Station[];
+  userCarPlates: Map<string, string>;
+  currentUserId: string;
+  isAdmin?: boolean;
 };
 
-export function StationTimeline({ sessions, stations }: StationTimelineProps) {
+export function StationTimeline({ sessions, stations, userCarPlates, currentUserId, isAdmin = false }: StationTimelineProps) {
   const [now, setNow] = useState<number | null>(null);
   const [isMounted, setIsMounted] = useState(false);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const updateScrollButtons = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 0);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  }, []);
+
+  // Re-check scroll button state after layout changes
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => updateScrollButtons());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [updateScrollButtons]);
+
+  const scrollBy = useCallback((amount: number) => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    el.scrollBy({ left: amount, behavior: "smooth" });
+  }, []);
 
   // Initialize client-side time after mount to avoid hydration mismatch
   useEffect(() => {
@@ -47,8 +74,16 @@ export function StationTimeline({ sessions, stations }: StationTimelineProps) {
     const stationNames = Array.from(new Set(sessions.map((s) => s.station.name))).sort();
     
     if (stationNames.length === 0 || sessions.length === 0 || now === null) {
-      return { stationNames: [], sessions: [], timeRange: { start: new Date(), end: new Date() }, duration: 0 };
+      return { stationNames: [], sessions: [], timeRange: { start: new Date(), end: new Date() }, duration: 0, latestCompletedSessionId: null };
     }
+
+    // Find the latest completed session
+    const completedSessions = sessions.filter(s => s.endTime && new Date(s.endTime).getTime() <= now);
+    const latestCompleted = completedSessions.length > 0
+      ? completedSessions.reduce((latest, current) => 
+          new Date(current.endTime!).getTime() > new Date(latest.endTime!).getTime() ? current : latest
+        )
+      : null;
 
     // Show 3 days total (yesterday, today, tomorrow) but fit 12 hours on screen width
     const threeDaysMs = 72 * 60 * 60 * 1000; // 72 hours in milliseconds
@@ -61,10 +96,11 @@ export function StationTimeline({ sessions, stations }: StationTimelineProps) {
       sessions,
       timeRange: { start: timeStart, end: timeEnd },
       duration,
+      latestCompletedSessionId: latestCompleted?.id || null,
     };
   }, [sessions, now]);
 
-  const { stationNames, timeRange, duration } = timelineData;
+  const { stationNames, timeRange, duration, latestCompletedSessionId } = timelineData;
 
   // Scroll to center current time
   useEffect(() => {
@@ -79,8 +115,9 @@ export function StationTimeline({ sessions, stations }: StationTimelineProps) {
       // Calculate scroll position to center current time
       const scrollPosition = (scrollWidth * currentTimePosition) - (clientWidth / 2);
       container.scrollLeft = Math.max(0, scrollPosition);
+      updateScrollButtons();
     }
-  }, [sessions, now, timeRange, duration]);
+  }, [sessions, now, timeRange, duration, updateScrollButtons]);
 
   // Generate time markers
   const timeMarkers = useMemo(() => {
@@ -186,8 +223,39 @@ export function StationTimeline({ sessions, stations }: StationTimelineProps) {
           </div>
 
           {/* Scrollable content */}
-          <div ref={scrollContainerRef} className="flex-1 overflow-x-auto">
-            <div className="min-w-1200">
+          <div className="relative flex-1 min-w-0">
+            {/* Left arrow */}
+            <button
+              onClick={() => scrollBy(-300)}
+              className={`absolute left-1 top-1/2 -translate-y-1/2 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 shadow-md hover:bg-zinc-700 transition-opacity ${!canScrollLeft ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+              aria-label="Scroll left"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+
+            {/* Right arrow */}
+            <button
+              onClick={() => scrollBy(300)}
+              className={`absolute right-1 top-1/2 -translate-y-1/2 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 shadow-md hover:bg-zinc-700 transition-opacity ${!canScrollRight ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+              aria-label="Scroll right"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+
+            <div
+              ref={scrollContainerRef}
+              onScroll={updateScrollButtons}
+              className="overflow-x-hidden"
+            >
+            <div className="relative min-w-1200">
+              {/* Single current time indicator spanning all rows including time markers */}
+              {currentPosition >= 0 && currentPosition <= 100 && (
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-emerald-400 z-10 pointer-events-none"
+                  style={{ left: `${currentPosition}%` }}
+                />
+              )}
+
               {/* Time markers */}
               <div className="relative h-8 border-b border-zinc-800 mb-4">
                 {timeMarkers.map((marker, idx) => (
@@ -210,15 +278,6 @@ export function StationTimeline({ sessions, stations }: StationTimelineProps) {
 
                   return (
                     <div key={stationName} className="relative h-12 rounded-lg border border-zinc-800 bg-zinc-900/30">
-                      {/* Current time indicator */}
-                      {currentPosition >= 0 && currentPosition <= 100 && (
-                        <div
-                          className="absolute top-0 bottom-0 w-0.5 bg-emerald-400 z-10"
-                          style={{ left: `${currentPosition}%` }}
-                        >
-                          <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-emerald-400" />
-                        </div>
-                      )}
                       
                       {stationSessions.map((session) => {
                         const startPos = getPosition(session.startTime);
@@ -226,8 +285,34 @@ export function StationTimeline({ sessions, stations }: StationTimelineProps) {
                         const isActive =
                           session.startTime.getTime() <= now &&
                           (!session.endTime || session.endTime.getTime() > now);
+                        const isOwnSession = session.userId === currentUserId;
                         const isFuture = session.startTime.getTime() > now;
                         const isStartInPast = new Date(session.startTime) < new Date();
+                        const isLatestCompleted = session.id === latestCompletedSessionId;
+                        const carPlate = userCarPlates.get(session.userId);
+                        
+                        // Show car plate badge: always for own session (active/future/latest completed), or for all sessions when admin
+                        const showCarPlate = carPlate && (
+                          isAdmin
+                            ? (isActive || isFuture || isLatestCompleted)
+                            : (isOwnSession && (isActive || isFuture || isLatestCompleted))
+                        );
+
+                        // Other users' sessions (non-admin): plain coloured block, no info, no click
+                        if (!isOwnSession && !isAdmin) {
+                          const otherClass = isActive
+                            ? "bg-emerald-500/80 border border-emerald-400/50 opacity-60"
+                            : isFuture
+                            ? "bg-blue-500/80 border border-blue-400/50 opacity-60"
+                            : "bg-zinc-700/50 border border-zinc-600/40 opacity-60";
+                          return (
+                            <div
+                              key={session.id}
+                              className={`absolute top-1 bottom-1 rounded cursor-default ${otherClass}`}
+                              style={{ left: `${startPos}%`, width: `${width}%` }}
+                            />
+                          );
+                        }
 
                         const handleClick = () => {
                           // Only allow editing if session start is not in the past
@@ -253,32 +338,27 @@ export function StationTimeline({ sessions, stations }: StationTimelineProps) {
                               left: `${startPos}%`,
                               width: `${width}%`,
                             }}
-                            title={`${session.station.name}: ${session.startTime.toLocaleString(undefined, {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              hour12: false,
-                            })} - ${
-                              session.endTime
-                                ? session.endTime.toLocaleString(undefined, {
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  hour12: false,
-                                })
-                                : "Ongoing"
-                            }`}
                           >
+                            {/* Display car plate badge for active, future, and latest completed session */}
+                            {showCarPlate && (
+                              <div className="absolute inset-0 flex items-center justify-center px-1">
+                                <span className="text-xs font-medium text-white bg-black/30 px-1.5 py-0.5 rounded truncate max-w-full">
+                                  {carPlate}
+                                </span>
+                              </div>
+                            )}
+                            
                             {/* Tooltip on hover */}
                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-30">
                               <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs shadow-lg whitespace-nowrap">
                                 <div className="font-medium text-white mb-1">
                                   {session.station.name}
                                 </div>
+                                {carPlate && (
+                                  <div className="text-blue-400 mb-1">
+                                    Car: {carPlate}
+                                  </div>
+                                )}
                                 <div className="text-zinc-400">
                                   Start: {session.startTime.toLocaleString(undefined, {
                                     year: 'numeric',
@@ -313,6 +393,7 @@ export function StationTimeline({ sessions, stations }: StationTimelineProps) {
                 })}
               </div>
             </div>
+            </div>
           </div>
         </div>
 
@@ -329,6 +410,10 @@ export function StationTimeline({ sessions, stations }: StationTimelineProps) {
           <div className="flex items-center gap-2">
             <div className="h-3 w-6 rounded bg-zinc-700/40 border border-zinc-600/30" />
             <span className="text-zinc-400">Completed</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="h-3 w-6 rounded bg-zinc-700/50 border border-zinc-600/40 opacity-60" />
+            <span className="text-zinc-400">Reserved by others</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-0.5 w-6 bg-emerald-400" />

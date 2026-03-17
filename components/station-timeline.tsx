@@ -32,6 +32,7 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
   const [isMounted, setIsMounted] = useState(false);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const hasScrolledRef = useRef(false);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
 
@@ -102,20 +103,19 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
 
   const { stationNames, timeRange, duration, latestCompletedSessionId } = timelineData;
 
-  // Scroll to center current time
+  // Scroll to center current time — only once on initial mount
   useEffect(() => {
+    if (hasScrolledRef.current) return;
     if (scrollContainerRef.current && now !== null) {
       const container = scrollContainerRef.current;
       const scrollWidth = container.scrollWidth;
       const clientWidth = container.clientWidth;
       
-      // Calculate current time position as percentage of total duration
       const currentTimePosition = (now - timeRange.start.getTime()) / duration;
-      
-      // Calculate scroll position to center current time
       const scrollPosition = (scrollWidth * currentTimePosition) - (clientWidth / 2);
       container.scrollLeft = Math.max(0, scrollPosition);
       updateScrollButtons();
+      hasScrolledRef.current = true;
     }
   }, [sessions, now, timeRange, duration, updateScrollButtons]);
 

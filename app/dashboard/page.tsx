@@ -110,7 +110,7 @@ export default async function DashboardPage() {
               Monitor and manage your charging stations
             </p>
           </div>
-          <CreateSessionDialog stations={stations} hasUserInfo={!!currentUserInfo} />
+          <CreateSessionDialog stations={stations} hasUserInfo={!!currentUserInfo} isUserActive={currentUserInfo?.isActive ?? false} />
         </div>
 
         {/* Stats Grid */}

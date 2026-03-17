@@ -31,9 +31,10 @@ type Station = {
 type CreateSessionDialogProps = {
   stations: Station[];
   hasUserInfo: boolean;
+  isUserActive: boolean;
 };
 
-export function CreateSessionDialog({ stations, hasUserInfo }: CreateSessionDialogProps) {
+export function CreateSessionDialog({ stations, hasUserInfo, isUserActive }: CreateSessionDialogProps) {
   // Helper function to get default start time (5 minutes from now)
   const getDefaultStartTime = () => {
     const fiveMinutesFromNow = new Date();
@@ -196,6 +197,7 @@ export function CreateSessionDialog({ stations, hasUserInfo }: CreateSessionDial
   };
 
   const handleOpenChange = (newOpen: boolean) => {
+    if (newOpen && (!hasUserInfo || !isUserActive)) return;
     setOpen(newOpen);
     if (!newOpen) {
       setServerError(null);
@@ -209,18 +211,27 @@ export function CreateSessionDialog({ stations, hasUserInfo }: CreateSessionDial
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <span
-          title={!hasUserInfo ? "Your account is not registered in the system. Please contact an administrator to add your user information." : undefined}
-          className={!hasUserInfo ? "cursor-not-allowed" : undefined}
-        >
+        <span className={`relative group inline-block${(!hasUserInfo || !isUserActive) ? " cursor-not-allowed" : ""}`}>
           <Button
             className="gap-2 bg-emerald-600 hover:bg-emerald-500"
-            disabled={!hasUserInfo}
-            tabIndex={!hasUserInfo ? -1 : undefined}
+            disabled={!hasUserInfo || !isUserActive}
+            tabIndex={(!hasUserInfo || !isUserActive) ? -1 : undefined}
           >
             <Zap className="h-4 w-4" />
             Reserve Session
           </Button>
+          {!hasUserInfo && (
+            <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 w-64 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-50">
+              Your account is not registered in the system. Please contact an administrator to add your user information.
+              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-zinc-700" />
+            </div>
+          )}
+          {hasUserInfo && !isUserActive && (
+            <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 w-64 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-50">
+              Your account has been deactivated. Please contact an administrator to restore access.
+              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-zinc-700" />
+            </div>
+          )}
         </span>
       </DialogTrigger>
       <DialogContent>

@@ -29,7 +29,7 @@ type StationTimelineProps = {
 
 export function StationTimeline({ sessions, stations, userCarPlates, currentUserId, isAdmin = false }: StationTimelineProps) {
   const [now, setNow] = useState<number | null>(null);
-  const [isMounted, setIsMounted] = useState(false);
+  const isMounted = now !== null;
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [hoveredSessionId, setHoveredSessionId] = useState<number | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -61,14 +61,12 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
 
   // Initialize client-side time after mount to avoid hydration mismatch
   useEffect(() => {
-    setNow(Date.now());
-    setIsMounted(true);
-    
-    const interval = setInterval(() => {
-      setNow(Date.now());
-    }, 10000); // Update every 10 seconds for more responsive state changes
-
-    return () => clearInterval(interval);
+    const timeout = setTimeout(() => setNow(Date.now()), 0);
+    const interval = setInterval(() => setNow(Date.now()), 10000);
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
   }, []);
 
   const timelineData = useMemo(() => {

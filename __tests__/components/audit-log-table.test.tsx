@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 
 // AuditLogTable is a server component used as a pure presentational component —
 // no actions to mock.
@@ -77,5 +77,92 @@ describe("AuditLogTable", () => {
     render(<AuditLogTable logs={logs} userEmails={new Map()} />);
     // The truncated form ends with ellipsis character
     expect(screen.getByText(/…$/)).toBeInTheDocument();
+  });
+});
+
+// -----------------------------------------------------------------------
+// Scroll buttons
+// -----------------------------------------------------------------------
+describe("AuditLogTable — scroll buttons", () => {
+  it("renders both scroll buttons when logs are present", () => {
+    render(<AuditLogTable logs={[makeAuditLog()]} userEmails={new Map()} />);
+    expect(screen.getByLabelText("Scroll left")).toBeInTheDocument();
+    expect(screen.getByLabelText("Scroll right")).toBeInTheDocument();
+  });
+
+  it("clicking the right button invokes scrollBy with +300", () => {
+    const scrollSpy = vi.spyOn(HTMLElement.prototype, "scrollBy").mockImplementation(() => {});
+    render(<AuditLogTable logs={[makeAuditLog()]} userEmails={new Map()} />);
+    fireEvent.click(screen.getByLabelText("Scroll right"));
+    expect(scrollSpy).toHaveBeenCalledWith({ left: 300, behavior: "smooth" });
+    scrollSpy.mockRestore();
+  });
+
+  it("clicking the left button invokes scrollBy with -300", () => {
+    const scrollSpy = vi.spyOn(HTMLElement.prototype, "scrollBy").mockImplementation(() => {});
+    render(<AuditLogTable logs={[makeAuditLog()]} userEmails={new Map()} />);
+    fireEvent.click(screen.getByLabelText("Scroll left"));
+    expect(scrollSpy).toHaveBeenCalledWith({ left: -300, behavior: "smooth" });
+    scrollSpy.mockRestore();
+  });
+
+  it("fires a scroll event on the container without throwing", () => {
+    const { container } = render(<AuditLogTable logs={[makeAuditLog()]} userEmails={new Map()} />);
+    const scrollContainer = container.querySelector(".overflow-x-hidden");
+    expect(() => fireEvent.scroll(scrollContainer!)).not.toThrow();
+  });
+});
+
+// -----------------------------------------------------------------------
+// Column resize
+// -----------------------------------------------------------------------
+describe("AuditLogTable — column resize", () => {
+  afterEach(() => {
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  });
+
+  it("sets body cursor to col-resize when mousedown on a resize handle", () => {
+    render(<AuditLogTable logs={[makeAuditLog()]} userEmails={new Map()} />);
+    const handles = document.querySelectorAll(".cursor-col-resize");
+    fireEvent.mouseDown(handles[0], { clientX: 100 });
+    expect(document.body.style.cursor).toBe("col-resize");
+  });
+
+  it("updates the column width on mousemove after a resize starts", () => {
+    const { container } = render(<AuditLogTable logs={[makeAuditLog()]} userEmails={new Map()} />);
+    const handles = document.querySelectorAll(".cursor-col-resize");
+
+    // Col 0 (Time) has defaultWidth=160. Start drag at x=100, move to x=180 → delta=80 → 240px.
+    fireEvent.mouseDown(handles[0], { clientX: 100 });
+    act(() => {
+      fireEvent.mouseMove(document, { clientX: 180 });
+    });
+
+    const cols = container.querySelectorAll("col");
+    expect(cols[0].getAttribute("style")).toContain("240px");
+  });
+
+  it("resets body cursor to empty string on mouseup after resize", () => {
+    render(<AuditLogTable logs={[makeAuditLog()]} userEmails={new Map()} />);
+    const handles = document.querySelectorAll(".cursor-col-resize");
+
+    fireEvent.mouseDown(handles[0], { clientX: 100 });
+    expect(document.body.style.cursor).toBe("col-resize");
+
+    fireEvent.mouseUp(document);
+    expect(document.body.style.cursor).toBe("");
+  });
+
+  it("does not change column width on mousemove when no resize is in progress", () => {
+    const { container } = render(<AuditLogTable logs={[makeAuditLog()]} userEmails={new Map()} />);
+    const cols = container.querySelectorAll("col");
+    const before = cols[0].getAttribute("style");
+
+    act(() => {
+      fireEvent.mouseMove(document, { clientX: 999 });
+    });
+
+    expect(cols[0].getAttribute("style")).toBe(before);
   });
 });

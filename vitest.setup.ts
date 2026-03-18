@@ -6,3 +6,8 @@ global.ResizeObserver = class ResizeObserver {
   unobserve() {}
   disconnect() {}
 };
+
+// Polyfill scrollBy for jsdom (used by audit-log-table scroll buttons)
+if (!HTMLElement.prototype.scrollBy) {
+  HTMLElement.prototype.scrollBy = function () {};
+}

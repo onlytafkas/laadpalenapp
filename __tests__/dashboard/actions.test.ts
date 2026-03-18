@@ -630,3 +630,91 @@ describe("activateUserAction — error path", () => {
     expect(result).toEqual({ error: "Failed to activate user" });
   });
 });
+
+// -----------------------------------------------------------------------
+// createSession — additional error paths (covers uncovered catch branches)
+// -----------------------------------------------------------------------
+describe("createSession — error paths", () => {
+  it("returns error when cooldown check throws unexpectedly", async () => {
+    mockCheckCooldownConstraint.mockRejectedValue(new Error("DB error"));
+    const result = await createSession(validSessionInput());
+    expect(result).toEqual({ error: "Failed to validate reservation cooldown" });
+  });
+
+  it("returns error when checkSessionOverlap throws unexpectedly", async () => {
+    mockCheckSessionOverlap.mockRejectedValue(new Error("Network error"));
+    const result = await createSession(validSessionInput());
+    expect(result).toEqual({ error: "Failed to validate session timing" });
+  });
+
+  it("returns error when createLoadingSession throws", async () => {
+    mockCreateLoadingSession.mockRejectedValue(new Error("DB write error"));
+    const result = await createSession(validSessionInput());
+    expect(result).toEqual({ error: "Failed to create charging session" });
+  });
+});
+
+// -----------------------------------------------------------------------
+// updateSession — additional error paths
+// -----------------------------------------------------------------------
+describe("updateSession — error paths", () => {
+  function validUpdateInput() {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(10, 0, 0, 0);
+    const end = new Date(tomorrow);
+    end.setHours(11, 0, 0, 0);
+    return { id: 1, stationId: 1, startTime: tomorrow.toISOString(), endTime: end.toISOString() };
+  }
+
+  it("returns error when checkSessionOverlap throws unexpectedly", async () => {
+    mockGetSessionById.mockResolvedValue(makeSession({ userId: "user_test123" }));
+    mockCheckSessionOverlap.mockRejectedValue(new Error("Network error"));
+    const result = await updateSession(validUpdateInput());
+    expect(result).toEqual({ error: "Failed to validate session timing" });
+  });
+
+  it("returns error when updateLoadingSession throws", async () => {
+    mockGetSessionById.mockResolvedValue(makeSession({ userId: "user_test123" }));
+    mockUpdateLoadingSession.mockRejectedValue(new Error("DB write error"));
+    const result = await updateSession(validUpdateInput());
+    expect(result).toEqual({ error: "Failed to update charging session" });
+  });
+});
+
+// -----------------------------------------------------------------------
+// deleteSession — additional error paths
+// -----------------------------------------------------------------------
+describe("deleteSession — error paths", () => {
+  it("returns error when deleteLoadingSession throws", async () => {
+    mockGetSessionById.mockResolvedValue(makeSession({ userId: "user_test123" }));
+    mockDeleteLoadingSession.mockRejectedValue(new Error("DB error"));
+    const result = await deleteSession(1);
+    expect(result).toEqual({ error: "Failed to delete charging session" });
+  });
+});
+
+// -----------------------------------------------------------------------
+// createStationAction — additional error paths
+// -----------------------------------------------------------------------
+describe("createStationAction — error paths", () => {
+  it("returns error when createStation throws (e.g. duplicate name)", async () => {
+    mockGetUserInfo.mockResolvedValue(adminUser());
+    mockCreateStation.mockRejectedValue(new Error("Duplicate name"));
+    const result = await createStationAction({ name: "Station X" });
+    expect(result).toEqual({ error: "Failed to create station. Station name may already exist." });
+  });
+});
+
+// -----------------------------------------------------------------------
+// updateStationAction — additional error paths
+// -----------------------------------------------------------------------
+describe("updateStationAction — error paths", () => {
+  it("returns error when updateStation throws (e.g. duplicate name)", async () => {
+    mockGetUserInfo.mockResolvedValue(adminUser());
+    mockGetStationById.mockResolvedValue(makeStation({ id: 1 }));
+    mockUpdateStation.mockRejectedValue(new Error("Duplicate name"));
+    const result = await updateStationAction({ id: 1, name: "Station X Updated" });
+    expect(result).toEqual({ error: "Failed to update station. Station name may already exist." });
+  });
+});

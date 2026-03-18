@@ -53,27 +53,27 @@ export default async function Home() {
   ];
 
   return (
-    <div className="min-h-screen bg-linear-to-b from-zinc-950 via-zinc-900 to-black">
+    <div className="bg-linear-to-b from-zinc-950 via-zinc-900 to-black">
       {/* Hero Section */}
-      <section className="relative overflow-hidden px-6 py-24 sm:py-32 lg:px-8">
+      <section className="relative overflow-hidden px-6 py-12 sm:py-16 lg:px-8">
         <div className="absolute inset-0 -z-10 overflow-hidden">
           <div className="absolute left-[50%] top-0 h-200 w-200 -translate-x-[30%] rounded-full bg-linear-to-tr from-emerald-500/20 to-blue-500/20 blur-3xl" />
         </div>
         
         <div className="mx-auto max-w-4xl text-center">
-          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-400">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-400">
             <Zap className="h-4 w-4" />
             <span>Charging Station Management Platform</span>
           </div>
           
-          <h1 className="mb-6 text-5xl font-bold tracking-tight text-white sm:text-7xl">
+          <h1 className="mb-3 text-2xl font-bold tracking-tight text-white sm:text-2xl">
             Manage Your Charging Network with{" "}
             <span className="bg-linear-to-r from-emerald-400 to-blue-500 bg-clip-text text-transparent">
               Confidence
             </span>
           </h1>
           
-          <p className="mx-auto mb-10 max-w-2xl text-lg leading-8 text-zinc-300 sm:text-xl">
+          <p className="mx-auto mb-5 max-w-2xl text-lg leading-8 text-zinc-300 sm:text-xl">
             Comprehensive charging station management platform for monitoring, analytics, 
             and control. Optimize your EV charging infrastructure with real-time insights.
           </p>
@@ -98,10 +98,10 @@ export default async function Home() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="px-6 py-24 sm:py-32 lg:px-8">
+      <section id="features" className="px-6 py-12 sm:py-16 lg:px-8">
         <div className="mx-auto max-w-7xl">
-          <div className="mx-auto mb-16 max-w-2xl text-center">
-            <h2 className="mb-4 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+          <div className="mx-auto mb-8 max-w-2xl text-center">
+            <h2 className="mb-4 text-2xl font-bold tracking-tight text-white sm:text-2xl">
               Everything You Need to Manage Your Charging Stations
             </h2>
             <p className="text-lg text-zinc-400">
@@ -109,20 +109,22 @@ export default async function Home() {
             </p>
           </div>
           
-          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {features.map((feature) => {
               const Icon = feature.icon;
               return (
                 <div
                   key={feature.title}
-                  className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 p-8 backdrop-blur transition-all hover:border-zinc-700 hover:bg-zinc-900"
+                  className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 backdrop-blur transition-all hover:border-zinc-700 hover:bg-zinc-900"
                 >
-                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 transition-colors group-hover:bg-emerald-500/20">
-                    <Icon className="h-6 w-6" />
+                  <div className="mb-2 flex items-center gap-3">
+                    <div className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 transition-colors group-hover:bg-emerald-500/20">
+                      <Icon className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-base font-semibold text-white">
+                      {feature.title}
+                    </h3>
                   </div>
-                  <h3 className="mb-2 text-xl font-semibold text-white">
-                    {feature.title}
-                  </h3>
                   <p className="text-zinc-400">
                     {feature.description}
                   </p>
@@ -134,12 +136,12 @@ export default async function Home() {
       </section>
 
       {/* CTA Section */}
-      <section className="px-6 py-24 sm:py-32 lg:px-8">
+      <section className="px-6 py-6 lg:px-8">
         <div className="mx-auto max-w-4xl text-center">
-          <h2 className="mb-6 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+          <h2 className="mb-3 text-2xl font-bold tracking-tight text-white sm:text-2xl">
             Ready to Transform Your Charging Network?
           </h2>
-          <p className="mx-auto mb-10 max-w-xl text-lg text-zinc-400">
+          <p className="mx-auto mb-5 max-w-xl text-lg text-zinc-400">
             Join the platform trusted by charging station operators worldwide. 
             Get started in minutes.
           </p>
@@ -153,7 +155,7 @@ export default async function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-zinc-800 px-6 py-12">
+      <footer className="border-t border-zinc-800 px-6 py-3">
         <div className="mx-auto max-w-7xl text-center text-sm text-zinc-500">
           <p>© {new Date().getFullYear()} Charging Stations App. All rights reserved.</p>
         </div>

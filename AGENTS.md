@@ -27,13 +27,13 @@ This project is a charging station management application built with Next.js, Ty
 6. **Accessibility**: Ensure all components meet WCAG 2.1 AA standards.
 7. **🚫 NEVER USE middleware.ts**: Do NOT create or use `middleware.ts` as it is deprecated in later versions of Next.js (including the version used in this project). **ALWAYS use `proxy.ts` instead** for handling middleware-like functionality such as request interception, authentication checks, or redirects.
 8. **⚠️ NEVER MODIFY FONTS**: The Geist fonts are configured in `app/layout.tsx` and MUST NOT be removed or changed.
-9. **🧪 Tests Are Mandatory**: Every new data function, server action, and business component MUST have tests. All business logic files must maintain ≥ 80% coverage (Stmts, Branch, Funcs, Lines). Run `npm run test` after every change to confirm no regressions, and `npm run test:coverage` to verify thresholds are still met.
+9. **🧪 Tests Are Mandatory**: Every new data function, server action, and business component MUST have tests. Tests must be **meaningful** — each test covers a distinct scenario (happy path, error path, edge case, branch). All business logic files must maintain ≥ 80% coverage (Stmts, Branch, Funcs, Lines). Run `npm run test` after every change to confirm no regressions, and `npm run test:coverage` to verify thresholds are still met. **Always read `.github/instructions/testing.instructions.md` before writing or modifying any code.**
 
 ## Workflow for Code Generation
 
-1. **READ FIRST**: Consult the relevant instruction file(s) for your task
+1. **READ FIRST**: Read `.github/instructions/testing.instructions.md` and any other relevant instruction file(s) for your task before writing a single line of code.
 2. **UNDERSTAND**: Review existing code patterns in the project
 3. **PLAN**: Ensure your approach follows the documented standards
 4. **IMPLEMENT**: Generate code that matches the patterns and rules
-5. **TEST**: Write or update tests for every changed data function, server action, and component
-6. **VALIDATE**: Run `npm run test` (all pass) then `npm run test:coverage` (all business logic files ≥ 80%). Fix any failures or regressions before finishing.
+5. **TEST**: Write **meaningful** tests for every changed data function, server action, and component. Cover every new branch: happy path, error/catch paths, null/edge cases.
+6. **VALIDATE**: Run `npm run test` (all pass) then `npm run test:coverage` (all business logic files ≥ 80% Stmts/Branch/Funcs/Lines). If coverage drops, add tests before finishing — do not skip this step.

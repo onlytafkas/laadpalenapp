@@ -1,16 +1,22 @@
 ---
-description: Rules for writing and maintaining tests in the project. Use whenever adding a new feature, data function, server action, or component — and always after any code change.
+description: Rules for writing and maintaining tests in the project. Always read this file before implementing or modifying any code — tests and coverage checks are mandatory for every change.
+applyTo: "**"
 ---
 
 # Testing Guidelines
 
 ## Core Requirement
 
-**Every new piece of business logic MUST have tests written before or alongside the implementation.** Tests are not optional and must pass before any change is considered complete.
+**MANDATORY — read and apply these rules for every code change, no exceptions.**
 
-After any code change, always:
+- Every new piece of business logic MUST have tests written before or alongside the implementation.
+- Tests must be **meaningful**: each test asserts real behaviour and covers a distinct scenario. Never write tests that exist only to inflate coverage numbers.
+- Tests are not optional and must pass before any change is considered complete.
+
+After **every** code change (no exceptions):
 1. Run the full test suite to confirm no regressions — `npm run test`
 2. Run coverage to confirm thresholds are maintained — `npm run test:coverage`
+3. If coverage drops below 80% on any business-logic file, add meaningful tests to restore it before finishing.
 
 ---
 
@@ -229,21 +235,26 @@ beforeEach(() => {
 
 ## Test Quality Rules
 
-1. **No coverage padding** — every test must assert meaningful behaviour, not just "it didn't throw"
-2. **No snapshots** — use explicit `expect(x).toEqual(y)` assertions
-3. **Test behaviour, not implementation** — do not test internal function calls unless they represent side effects (e.g., audit log was written, revalidatePath was called)
-4. **One concept per test** — keep each `it()` focused on a single scenario
-5. **Descriptive names** — write test names as sentences: `"returns error when station is not found"`
+1. **Meaningful tests only** — every test must assert real, observable behaviour. A test that only checks "it didn't throw" or duplicates an already-covered path has no value and must not be added.
+2. **Cover all branches** — aim for 100% branch coverage on data functions and server actions. For each `if`/`else`, `try`/`catch`, and ternary in business logic, there should be at least one test exercising each path.
+3. **No snapshots** — use explicit `expect(x).toEqual(y)` assertions
+4. **Test behaviour, not implementation** — do not test internal function calls unless they represent side effects (e.g., audit log was written, revalidatePath was called)
+5. **One concept per test** — keep each `it()` focused on a single scenario
+6. **Descriptive names** — write test names as sentences: `"returns error when station is not found"`
+7. **No dead coverage** — do not spy or call a function just to move a line into the covered set without asserting its return value or side effect
 
 ---
 
-## Checklist for New Features
+## Checklist — Required Before Finishing Any Change
 
-When implementing a new feature, do the following before marking it done:
+Run through this checklist for **every** code change — not only new features:
 
+- [ ] Identified every new or modified code path (branches, conditionals, error paths)
+- [ ] Wrote a **meaningful** test for each identified path — happy path, error path, edge cases
 - [ ] Wrote tests for every new exported data function in `data/`
 - [ ] Wrote tests for every new server action in `actions.ts`
 - [ ] Wrote tests for every new business component in `components/`
 - [ ] Ran `npm run test` — all tests pass (0 failures)
-- [ ] Ran `npm run test:coverage` — all business logic files remain at ≥ 80% on all metrics
+- [ ] Ran `npm run test:coverage` — all business logic files remain at ≥ 80% Stmts / Branch / Funcs / Lines
+- [ ] Coverage did not drop compared to before the change; if it did, added tests to restore or exceed the previous level
 - [ ] No existing tests were broken by the change

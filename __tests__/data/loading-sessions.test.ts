@@ -165,6 +165,26 @@ describe("checkSessionOverlap", () => {
     );
     expect(result).toBe(true);
   });
+
+  it("returns true when the new session has no endTime and overlaps an existing session", async () => {
+    // New session: starts 10:30, endTime=null → bufferedEnd = 10:30+5min = 10:35.
+    // Existing: 10:00–11:00. bufferedStart=10:25 < 11:00 AND bufferedEnd=10:35 > 10:00 → overlap.
+    mockFindMany.mockResolvedValue([
+      makeSession({ startTime: dt("2026-03-18T10:00:00Z"), endTime: dt("2026-03-18T11:00:00Z") }),
+    ]);
+    const result = await checkSessionOverlap(1, dt("2026-03-18T10:30:00Z"), null);
+    expect(result).toBe(true);
+  });
+
+  it("returns false when the new session has no endTime and starts after the existing session with a 5-min gap", async () => {
+    // Existing: 10:00–11:00. New: starts 11:06, endTime=null → bufferedEnd=11:11.
+    // bufferedStart=11:01 < 11:00? NO → no overlap.
+    mockFindMany.mockResolvedValue([
+      makeSession({ startTime: dt("2026-03-18T10:00:00Z"), endTime: dt("2026-03-18T11:00:00Z") }),
+    ]);
+    const result = await checkSessionOverlap(1, dt("2026-03-18T11:06:00Z"), null);
+    expect(result).toBe(false);
+  });
 });
 
 // -----------------------------------------------------------------------
@@ -216,6 +236,31 @@ describe("findNextAvailableStartTime", () => {
     const result = await findNextAvailableStartTime(1, dt("2026-03-18T10:00:00Z"), 99);
     expect(result).toBeNull();
     expect(mockFindMany).toHaveBeenCalled();
+  });
+
+  it("picks the latest end time when two sessions conflict in the same outer iteration", async () => {
+    // Sessions A (10:00–11:00) and B (10:02–12:00) both start within 5 min of 10:00.
+    // The inner loop must pick the later end (12:00), advancing candidateTime to 12:05.
+    mockFindMany.mockResolvedValue([
+      makeSession({ id: 1, startTime: dt("2026-03-18T10:00:00Z"), endTime: dt("2026-03-18T11:00:00Z") }),
+      makeSession({ id: 2, startTime: dt("2026-03-18T10:02:00Z"), endTime: dt("2026-03-18T12:00:00Z") }),
+    ]);
+    const result = await findNextAvailableStartTime(1, dt("2026-03-18T10:00:00Z"));
+    expect(result).not.toBeNull();
+    expect(result!.getTime()).toBe(dt("2026-03-18T12:05:00Z").getTime());
+  });
+
+  it("does not regress latestConflictingEndTime when a session with a shorter end is processed after a longer one", async () => {
+    // Session A (10:00–12:00) processed first → latestConflictingEndTime=12:00.
+    // Session B (10:02–11:00) also conflicts but ends earlier (11:00 < 12:00) → no update.
+    // Result should still advance past 12:00 → 12:05.
+    mockFindMany.mockResolvedValue([
+      makeSession({ id: 1, startTime: dt("2026-03-18T10:00:00Z"), endTime: dt("2026-03-18T12:00:00Z") }),
+      makeSession({ id: 2, startTime: dt("2026-03-18T10:02:00Z"), endTime: dt("2026-03-18T11:00:00Z") }),
+    ]);
+    const result = await findNextAvailableStartTime(1, dt("2026-03-18T10:00:00Z"));
+    expect(result).not.toBeNull();
+    expect(result!.getTime()).toBe(dt("2026-03-18T12:05:00Z").getTime());
   });
 });
 
@@ -282,6 +327,19 @@ describe("checkCooldownConstraint", () => {
     mockFindMany.mockResolvedValue([]);
     const result = await checkCooldownConstraint("user_abc", dt("2026-03-18T10:00:00Z"), 99);
     expect(result.valid).toBe(true);
+  });
+
+  it("keeps the maximum end time when a later session is processed before an earlier one", async () => {
+    // Sessions in reverse order: 10:00 first, 08:00 second.
+    // The later end (10:00) should be retained as latestEndTime despite being seen first.
+    mockFindMany.mockResolvedValue([
+      makeSession({ id: 1, endTime: dt("2026-03-18T10:00:00Z") }),
+      makeSession({ id: 2, endTime: dt("2026-03-18T08:00:00Z") }),
+    ]);
+    // Proposing 12:00 — only 2h after the latest (10:00) → blocked, must wait until 14:00.
+    const result = await checkCooldownConstraint("user_abc", dt("2026-03-18T12:00:00Z"));
+    expect(result.valid).toBe(false);
+    expect(result.nextAvailableTime!.getTime()).toBe(dt("2026-03-18T14:00:00Z").getTime());
   });
 });
 

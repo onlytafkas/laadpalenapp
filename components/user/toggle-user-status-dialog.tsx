@@ -52,6 +52,7 @@ export function ToggleUserStatusDialog({ user, userEmail }: ToggleUserStatusDial
         <Button 
           variant="outline" 
           size="sm"
+          aria-label={user.isActive ? "Deactivate" : "Activate"}
           className={user.isActive ? "text-orange-400 hover:text-orange-300" : "text-emerald-400 hover:text-emerald-300"}
         >
           {user.isActive ? (

@@ -2,7 +2,7 @@
 
 import { Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { EditSessionDialog } from "@/components/edit-session-dialog";
+import { EditSessionDialog } from "@/components/session/edit-session-dialog";
 
 type Station = {
   id: number;

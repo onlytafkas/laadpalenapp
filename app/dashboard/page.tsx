@@ -5,19 +5,19 @@ import { getUserLoadingSessions, getAllLoadingSessions } from "@/data/loading-se
 import { getAllStations } from "@/data/stations";
 import { getAllUsers, getUserInfo } from "@/data/usersinfo";
 import { clerkClient } from "@clerk/nextjs/server";
-import { CreateSessionDialog } from "@/components/create-session-dialog";
-import { EditSessionDialog } from "@/components/edit-session-dialog";
-import { DeleteSessionDialog } from "@/components/delete-session-dialog";
-import { CreateStationDialog } from "@/components/create-station-dialog";
-import { EditStationDialog } from "@/components/edit-station-dialog";
-import { DeleteStationDialog } from "@/components/delete-station-dialog";
-import { CreateUserDialog } from "@/components/create-user-dialog";
-import { EditUserDialog } from "@/components/edit-user-dialog";
-import { ToggleUserStatusDialog } from "@/components/toggle-user-status-dialog";
-import { StationTimeline } from "@/components/station-timeline";
+import { CreateSessionDialog } from "@/components/session/create-session-dialog";
+import { EditSessionDialog } from "@/components/session/edit-session-dialog";
+import { DeleteSessionDialog } from "@/components/session/delete-session-dialog";
+import { CreateStationDialog } from "@/components/station/create-station-dialog";
+import { EditStationDialog } from "@/components/station/edit-station-dialog";
+import { DeleteStationDialog } from "@/components/station/delete-station-dialog";
+import { CreateUserDialog } from "@/components/user/create-user-dialog";
+import { EditUserDialog } from "@/components/user/edit-user-dialog";
+import { ToggleUserStatusDialog } from "@/components/user/toggle-user-status-dialog";
+import { StationTimeline } from "@/components/station/station-timeline";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AutoRefresh } from "@/components/auto-refresh";
-import { AuditLogTable } from "@/components/audit-log-table";
+import { AuditLogTable } from "@/components/audit/audit-log-table";
 import { getAllAuditLogs } from "@/data/audit";
 
 // Force dynamic rendering and refresh data every minute
@@ -160,7 +160,6 @@ export default async function DashboardPage() {
               Monitor and manage charging - {currentUserEmail}
             </p>
           </div>
-          <CreateSessionDialog stations={stations} hasUserInfo={!!currentUserInfo} isUserActive={currentUserInfo?.isActive ?? false} />
         </div>
 
         {/* Stats Grid */}
@@ -215,13 +214,16 @@ export default async function DashboardPage() {
           </div>
         ) : (
           <Tabs defaultValue="timeline" className="w-full">
-            <TabsList className="mb-8">
-              <TabsTrigger value="timeline">Timeline</TabsTrigger>
-              <TabsTrigger value="sessions">Sessions</TabsTrigger>
-              {isAdmin && <TabsTrigger value="stations">Stations</TabsTrigger>}
-              {isAdmin && <TabsTrigger value="users">Users</TabsTrigger>}
-              {isAdmin && <TabsTrigger value="audit">Logs</TabsTrigger>}
-            </TabsList>
+            <div className="mb-8 flex items-center justify-between">
+              <TabsList>
+                <TabsTrigger value="timeline">Timeline</TabsTrigger>
+                <TabsTrigger value="sessions">Sessions</TabsTrigger>
+                {isAdmin && <TabsTrigger value="stations">Stations</TabsTrigger>}
+                {isAdmin && <TabsTrigger value="users">Users</TabsTrigger>}
+                {isAdmin && <TabsTrigger value="audit">Logs</TabsTrigger>}
+              </TabsList>
+              <CreateSessionDialog stations={stations} hasUserInfo={!!currentUserInfo} isUserActive={currentUserInfo?.isActive ?? false} />
+            </div>
             
             <TabsContent value="timeline" className="mt-0">
               <StationTimeline sessions={allSessions} stations={stations} userCarPlates={userCarPlates} currentUserId={userId} isAdmin={isAdmin} />

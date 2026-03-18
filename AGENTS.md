@@ -26,7 +26,8 @@ This project is a charging station management application built with Next.js, Ty
 5. **Database Type Safety**: Use Drizzle ORM's type inference for database operations.
 6. **Accessibility**: Ensure all components meet WCAG 2.1 AA standards.
 7. **🚫 NEVER USE middleware.ts**: Do NOT create or use `middleware.ts` as it is deprecated in later versions of Next.js (including the version used in this project). **ALWAYS use `proxy.ts` instead** for handling middleware-like functionality such as request interception, authentication checks, or redirects.
-8. **⚠️ NEVER MODIFY FONTS**: The Geist fonts are configured in `app/layout.tsx` and MUST NOT be removed or changed. 
+8. **⚠️ NEVER MODIFY FONTS**: The Geist fonts are configured in `app/layout.tsx` and MUST NOT be removed or changed.
+9. **🧪 Tests Are Mandatory**: Every new data function, server action, and business component MUST have tests. All business logic files must maintain ≥ 80% coverage (Stmts, Branch, Funcs, Lines). Run `npm run test` after every change to confirm no regressions, and `npm run test:coverage` to verify thresholds are still met.
 
 ## Workflow for Code Generation
 
@@ -34,4 +35,5 @@ This project is a charging station management application built with Next.js, Ty
 2. **UNDERSTAND**: Review existing code patterns in the project
 3. **PLAN**: Ensure your approach follows the documented standards
 4. **IMPLEMENT**: Generate code that matches the patterns and rules
-5. **VALIDATE**: Check that changes maintain type safety and architectural compliance
+5. **TEST**: Write or update tests for every changed data function, server action, and component
+6. **VALIDATE**: Run `npm run test` (all pass) then `npm run test:coverage` (all business logic files ≥ 80%). Fix any failures or regressions before finishing.

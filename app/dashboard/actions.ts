@@ -458,6 +458,11 @@ export async function deleteStationAction(id: number) {
   // 3. Fetch station + check sessions + delete
   const existingStation = await getStationById(id);
 
+  if (!existingStation) {
+    await insertAuditLog({ performedByUserId: userId, action: "DELETE_STATION", entityType: "station", entityId: String(id), status: "validation_error", errorMessage: "Station not found", ...meta });
+    return { error: "Station not found" };
+  }
+
   try {
     const hasSessions = await checkStationHasSessions(id);
     if (hasSessions) {

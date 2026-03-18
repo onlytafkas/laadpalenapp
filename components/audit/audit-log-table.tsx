@@ -1,3 +1,7 @@
+"use client";
+
+import { useRef, useState, useCallback, useEffect } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getAllAuditLogs } from "@/data/audit";
 import {
   Table,
@@ -39,6 +43,31 @@ function truncate(val: string | null | undefined, len = 20) {
 }
 
 export function AuditLogTable({ logs, userEmails }: AuditLogTableProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const updateScrollButtons = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 0);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => updateScrollButtons());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [updateScrollButtons]);
+
+  const scrollBy = useCallback((amount: number) => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    el.scrollBy({ left: amount, behavior: "smooth" });
+  }, []);
+
   if (logs.length === 0) {
     return (
       <div className="text-center py-12">
@@ -48,7 +77,30 @@ export function AuditLogTable({ logs, userEmails }: AuditLogTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-zinc-800">
+    <div className="relative rounded-lg border border-zinc-800">
+      {/* Left arrow */}
+      <button
+        onClick={() => scrollBy(-300)}
+        className={`absolute left-1 top-1/2 -translate-y-1/2 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 shadow-md hover:bg-zinc-700 transition-opacity ${!canScrollLeft ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+        aria-label="Scroll left"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+
+      {/* Right arrow */}
+      <button
+        onClick={() => scrollBy(300)}
+        className={`absolute right-1 top-1/2 -translate-y-1/2 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 shadow-md hover:bg-zinc-700 transition-opacity ${!canScrollRight ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+        aria-label="Scroll right"
+      >
+        <ChevronRight className="h-4 w-4" />
+      </button>
+
+      <div
+        ref={scrollContainerRef}
+        onScroll={updateScrollButtons}
+        className="overflow-x-hidden rounded-lg [&_[data-slot='table-container']]:overflow-x-visible"
+      >
       <Table>
         <TableHeader>
           <TableRow className="border-zinc-800 hover:bg-transparent">
@@ -111,6 +163,7 @@ export function AuditLogTable({ logs, userEmails }: AuditLogTableProps) {
           ))}
         </TableBody>
       </Table>
+    </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { pgTable, integer, text, timestamp, serial, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, integer, text, timestamp, serial, boolean, json } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // Stations table
@@ -27,6 +27,22 @@ export const sessions = pgTable('sessions', {
     .references(() => stations.id),
   startTime: timestamp('start_time').notNull().defaultNow(),
   endTime: timestamp('end_time'),
+});
+
+// Audit logs table
+export const auditLogs = pgTable('audit_logs', {
+  id: serial('id').primaryKey(),
+  performedByUserId: text('performed_by_user_id'),
+  action: text('action').notNull(),
+  entityType: text('entity_type').notNull(),
+  entityId: text('entity_id'),
+  status: text('status').notNull(),
+  errorMessage: text('error_message'),
+  beforeData: json('before_data'),
+  afterData: json('after_data'),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
 // Relations

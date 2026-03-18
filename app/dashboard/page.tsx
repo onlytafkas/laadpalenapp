@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { Zap, BarChart3, MapPin, Activity, Clock, Building2, Users } from "lucide-react";
+import { Zap, BarChart3, MapPin, Activity, Clock, Building2, Users, ShieldCheck } from "lucide-react";
 import { getUserLoadingSessions, getAllLoadingSessions } from "@/data/loading-sessions";
 import { getAllStations } from "@/data/stations";
 import { getAllUsers, getUserInfo } from "@/data/usersinfo";
@@ -17,6 +17,8 @@ import { ToggleUserStatusDialog } from "@/components/toggle-user-status-dialog";
 import { StationTimeline } from "@/components/station-timeline";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AutoRefresh } from "@/components/auto-refresh";
+import { AuditLogTable } from "@/components/audit-log-table";
+import { getAllAuditLogs } from "@/data/audit";
 
 // Force dynamic rendering and refresh data every minute
 export const dynamic = "force-dynamic";
@@ -51,8 +53,9 @@ export default async function DashboardPage() {
   // All users need allSessions for the timeline (other users' blocks show as anonymous for non-admins)
   const allSessionsPromise = getAllLoadingSessions();
   const adminDataPromise = isAdmin ? getAllUsers() : Promise.resolve([]);
+  const auditLogsPromise = isAdmin ? getAllAuditLogs() : Promise.resolve([]);
 
-  const [allSessions, adminUsers] = await Promise.all([allSessionsPromise, adminDataPromise]);
+  const [allSessions, adminUsers, auditLogs] = await Promise.all([allSessionsPromise, adminDataPromise, auditLogsPromise]);
 
   if (isAdmin) {
     users = adminUsers;
@@ -75,6 +78,27 @@ export default async function DashboardPage() {
         console.error(`Failed to fetch email for user ${user.userId}:`, error);
         userEmails.set(user.userId, 'Email not found');
         userCarPlates.set(user.userId, user.carNumberPlate);
+      }
+    }
+
+    // Also resolve emails for any audit log actors not already in the map
+    if (auditLogs.length > 0) {
+      const knownIds = new Set(userEmails.keys());
+      const extraIds = [...new Set(
+        auditLogs
+          .map((l) => l.performedByUserId)
+          .filter((id): id is string => id !== null && !knownIds.has(id))
+      )];
+      for (const actorId of extraIds) {
+        try {
+          const clerkUser = await clerk.users.getUser(actorId);
+          const email = clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId)?.emailAddress
+                        || clerkUser.emailAddresses[0]?.emailAddress
+                        || 'No email';
+          userEmails.set(actorId, email);
+        } catch {
+          userEmails.set(actorId, 'Email not found');
+        }
       }
     }
   } else if (currentUserInfo) {
@@ -101,12 +125,24 @@ export default async function DashboardPage() {
   const allCompletedSessions = allSessions.filter((s) => s.endTime && new Date(s.endTime) <= now && new Date(s.endTime) >= todayStart);
   const allUniqueStations = new Set(allSessions.map((s) => s.station.name)).size;
   
-  // Find the latest completed session
-  const latestCompletedSession = completedSessions.length > 0
-    ? completedSessions.reduce((latest, current) => 
-        new Date(current.endTime!).getTime() > new Date(latest.endTime!).getTime() ? current : latest
-      )
-    : null;
+  // Collect stationIds that currently have an active session (across all users)
+  const activeSessionStationIds = new Set<number>(allActiveSessions.map((s) => s.stationId));
+
+  // Find the latest completed session id per station (for badge display)
+  const latestCompletedIdPerStation = new Map<number, number>();
+  for (const s of displaySessions) {
+    if (s.endTime && new Date(s.endTime) <= now) {
+      const existing = latestCompletedIdPerStation.get(s.stationId);
+      if (existing === undefined) {
+        latestCompletedIdPerStation.set(s.stationId, s.id);
+      } else {
+        const existingSession = displaySessions.find(x => x.id === existing)!;
+        if (new Date(s.endTime).getTime() > new Date(existingSession.endTime!).getTime()) {
+          latestCompletedIdPerStation.set(s.stationId, s.id);
+        }
+      }
+    }
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 font-sans">
@@ -184,6 +220,7 @@ export default async function DashboardPage() {
               <TabsTrigger value="sessions">Sessions</TabsTrigger>
               {isAdmin && <TabsTrigger value="stations">Stations</TabsTrigger>}
               {isAdmin && <TabsTrigger value="users">Users</TabsTrigger>}
+              {isAdmin && <TabsTrigger value="audit">Logs</TabsTrigger>}
             </TabsList>
             
             <TabsContent value="timeline" className="mt-0">
@@ -207,7 +244,8 @@ export default async function DashboardPage() {
                 <div className="space-y-3">
                   {completedSessions.map((session) => {
                     const carPlate = userCarPlates.get(session.userId);
-                    const isLatest = latestCompletedSession?.id === session.id;
+                    const stationHasActiveSession = activeSessionStationIds.has(session.stationId);
+                    const isLatestCompletedForStation = latestCompletedIdPerStation.get(session.stationId) === session.id;
                     return (
                     <div
                       key={session.id}
@@ -221,7 +259,7 @@ export default async function DashboardPage() {
                           <div className="font-medium text-white">
                             {session.station.name}
                           </div>
-                          {carPlate && isLatest && (
+                          {carPlate && !stationHasActiveSession && isLatestCompletedForStation && (
                             <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-400">
                               {carPlate}
                             </span>
@@ -417,6 +455,21 @@ export default async function DashboardPage() {
                     })}
                   </div>
                 )}
+              </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="audit" className="mt-0">
+              {isAdmin && (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 backdrop-blur">
+                <div className="mb-6 flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+                    <ShieldCheck className="h-5 w-5 text-zinc-400" />
+                    Logs
+                  </h2>
+                  <span className="text-sm text-zinc-500">{auditLogs.length} entries</span>
+                </div>
+                <AuditLogTable logs={auditLogs} userEmails={userEmails} />
               </div>
               )}
             </TabsContent>

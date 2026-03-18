@@ -48,3 +48,12 @@ export async function checkStationHasSessions(stationId: number): Promise<boolea
 
   return result[0].count > 0;
 }
+
+export async function getStationById(id: number) {
+  const [station] = await db
+    .select()
+    .from(stations)
+    .where(eq(stations.id, id));
+
+  return station ?? null;
+}

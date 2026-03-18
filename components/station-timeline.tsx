@@ -31,6 +31,7 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
   const [now, setNow] = useState<number | null>(null);
   const [isMounted, setIsMounted] = useState(false);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [hoveredSessionId, setHoveredSessionId] = useState<number | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const hasScrolledRef = useRef(false);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -75,16 +76,31 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
     const stationNames = Array.from(new Set(sessions.map((s) => s.station.name))).sort();
     
     if (stationNames.length === 0 || sessions.length === 0 || now === null) {
-      return { stationNames: [], sessions: [], timeRange: { start: new Date(), end: new Date() }, duration: 0, latestCompletedSessionId: null };
+      return { stationNames: [], sessions: [], timeRange: { start: new Date(), end: new Date() }, duration: 0, activeStationIds: new Set<number>(), latestCompletedIdPerStation: new Map<number, number>() };
     }
 
-    // Find the latest completed session
-    const completedSessions = sessions.filter(s => s.endTime && new Date(s.endTime).getTime() <= now);
-    const latestCompleted = completedSessions.length > 0
-      ? completedSessions.reduce((latest, current) => 
-          new Date(current.endTime!).getTime() > new Date(latest.endTime!).getTime() ? current : latest
-        )
-      : null;
+    // Collect stationIds that currently have an active session
+    const activeStationIds = new Set<number>(
+      sessions
+        .filter(s => s.startTime.getTime() <= now && (!s.endTime || s.endTime.getTime() > now))
+        .map(s => s.stationId)
+    );
+
+    // Find the latest completed session id per station
+    const latestCompletedIdPerStation = new Map<number, number>();
+    for (const s of sessions) {
+      if (s.endTime && s.endTime.getTime() <= now) {
+        const existing = latestCompletedIdPerStation.get(s.stationId);
+        if (existing === undefined) {
+          latestCompletedIdPerStation.set(s.stationId, s.id);
+        } else {
+          const existingSession = sessions.find(x => x.id === existing)!;
+          if (s.endTime.getTime() > existingSession.endTime!.getTime()) {
+            latestCompletedIdPerStation.set(s.stationId, s.id);
+          }
+        }
+      }
+    }
 
     // Show 3 days total (yesterday, today, tomorrow) but fit 12 hours on screen width
     const threeDaysMs = 72 * 60 * 60 * 1000; // 72 hours in milliseconds
@@ -97,11 +113,12 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
       sessions,
       timeRange: { start: timeStart, end: timeEnd },
       duration,
-      latestCompletedSessionId: latestCompleted?.id || null,
+      activeStationIds,
+      latestCompletedIdPerStation,
     };
   }, [sessions, now]);
 
-  const { stationNames, timeRange, duration, latestCompletedSessionId } = timelineData;
+  const { stationNames, timeRange, duration, activeStationIds, latestCompletedIdPerStation } = timelineData;
 
   // Scroll to center current time — only once on initial mount
   useEffect(() => {
@@ -271,10 +288,14 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
 
               {/* Timeline rows */}
               <div className="space-y-4">
-                {stationNames.map((stationName) => {
+                {stationNames.map((stationName, stationIdx) => {
                   const stationSessions = sessions.filter(
                     (s) => s.station.name === stationName
                   );
+                  const tooltipAbove = stationIdx > 0;
+                  const hoveredSession = hoveredSessionId !== null
+                    ? stationSessions.find(s => s.id === hoveredSessionId) ?? null
+                    : null;
 
                   return (
                     <div key={stationName} className="relative h-12 rounded-lg border border-zinc-800 bg-zinc-900/30">
@@ -288,13 +309,15 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
                         const isOwnSession = session.userId === currentUserId;
                         const isFuture = session.startTime.getTime() > now;
                         const isStartInPast = new Date(session.startTime) < new Date();
-                        const isLatestCompleted = session.id === latestCompletedSessionId;
+                        const isCompleted = !!session.endTime && session.endTime.getTime() <= now;
+                        const stationHasActiveSession = activeStationIds.has(session.stationId);
+                        const isLatestCompletedForStation = latestCompletedIdPerStation.get(session.stationId) === session.id;
                         const carPlate = userCarPlates.get(session.userId);
                         
-                        // Show car plate badge: on active/future always; on completed only for the latest one
-                        const showCarPlate = carPlate && (isActive || isFuture || isLatestCompleted) && (isAdmin || isOwnSession);
+                        // Show car plate badge: always for active/future; for completed only on the latest one per station when no active session exists
+                        const showCarPlate = carPlate && (isActive || isFuture || (isCompleted && !stationHasActiveSession && isLatestCompletedForStation)) && (isAdmin || isOwnSession);
 
-                        // Other users' sessions (non-admin): coloured block with hover tooltip but no car plate
+                        // Other users' sessions (non-admin): coloured block, no car plate
                         if (!isOwnSession && !isAdmin) {
                           const otherClass = isActive
                             ? "bg-emerald-500/80 border border-emerald-400/50 opacity-60"
@@ -304,46 +327,15 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
                           return (
                             <div
                               key={session.id}
-                              className={`absolute top-1 bottom-1 rounded cursor-default group ${otherClass}`}
+                              className={`absolute top-1 bottom-1 rounded cursor-default z-10 ${otherClass}`}
                               style={{ left: `${startPos}%`, width: `${width}%` }}
-                            >
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-30">
-                                <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs shadow-lg whitespace-nowrap">
-                                  <div className="font-medium text-white mb-1">
-                                    {session.station.name}
-                                  </div>
-                                  <div className="text-zinc-400">
-                                    Start: {session.startTime.toLocaleString(undefined, {
-                                      year: 'numeric',
-                                      month: 'short',
-                                      day: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                      hour12: false,
-                                    })}
-                                  </div>
-                                  {session.endTime ? (
-                                    <div className="text-zinc-400">
-                                      End: {session.endTime.toLocaleString(undefined, {
-                                        year: 'numeric',
-                                        month: 'short',
-                                        day: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                        hour12: false,
-                                      })}
-                                    </div>
-                                  ) : (
-                                    <div className="text-emerald-400">Ongoing</div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
+                              onMouseEnter={() => setHoveredSessionId(session.id)}
+                              onMouseLeave={() => setHoveredSessionId(null)}
+                            />
                           );
                         }
 
                         const handleClick = () => {
-                          // Only allow editing if session start is not in the past
                           if (!isStartInPast) {
                             setSelectedSession(session);
                           }
@@ -353,8 +345,10 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
                           <div
                             key={session.id}
                             onClick={handleClick}
-                            className={`absolute top-1 bottom-1 rounded transition-all hover:z-20 hover:scale-105 group ${
-                              isStartInPast ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                            onMouseEnter={() => setHoveredSessionId(session.id)}
+                            onMouseLeave={() => setHoveredSessionId(null)}
+                            className={`absolute top-1 bottom-1 rounded transition-colors z-10 ${
+                              isStartInPast ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:scale-105"
                             } ${
                               isActive
                                 ? "bg-emerald-500/80 border border-emerald-400/50"
@@ -367,7 +361,7 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
                               width: `${width}%`,
                             }}
                           >
-                            {/* Display car plate badge for active, future, and latest completed session */}
+                            {/* Display car plate badge */}
                             {showCarPlate && (
                               <div className="absolute inset-0 flex items-center justify-center px-1">
                                 <span className="text-xs font-medium text-white bg-black/30 px-1.5 py-0.5 rounded truncate max-w-full">
@@ -375,20 +369,42 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
                                 </span>
                               </div>
                             )}
-                            
-                            {/* Tooltip on hover */}
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-30">
-                              <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs shadow-lg whitespace-nowrap">
-                                <div className="font-medium text-white mb-1">
-                                  {session.station.name}
+                          </div>
+                        );
+                      })}
+
+                      {/* Tooltip rendered at row level — always above all session blocks */}
+                      {hoveredSession && (() => {
+                        const tooltipStartPos = getPosition(hoveredSession.startTime);
+                        const isOther = hoveredSession.userId !== currentUserId && !isAdmin;
+                        const carPlate = userCarPlates.get(hoveredSession.userId);
+                        return (
+                          <div
+                            className={`absolute z-50 pointer-events-none -translate-x-1/2 ${tooltipAbove ? "bottom-full mb-2" : "top-full mt-2"}`}
+                            style={{ left: `${tooltipStartPos}%` }}
+                          >
+                            <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs shadow-lg whitespace-nowrap">
+                              <div className="font-medium text-white mb-1">
+                                {hoveredSession.station.name}
+                              </div>
+                              {!isOther && carPlate && (
+                                <div className="text-blue-400 mb-1">
+                                  Car: {carPlate}
                                 </div>
-                                {carPlate && (
-                                  <div className="text-blue-400 mb-1">
-                                    Car: {carPlate}
-                                  </div>
-                                )}
+                              )}
+                              <div className="text-zinc-400">
+                                Start: {hoveredSession.startTime.toLocaleString(undefined, {
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  hour12: false,
+                                })}
+                              </div>
+                              {hoveredSession.endTime ? (
                                 <div className="text-zinc-400">
-                                  Start: {session.startTime.toLocaleString(undefined, {
+                                  End: {hoveredSession.endTime.toLocaleString(undefined, {
                                     year: 'numeric',
                                     month: 'short',
                                     day: 'numeric',
@@ -397,25 +413,13 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
                                     hour12: false,
                                   })}
                                 </div>
-                                {session.endTime ? (
-                                  <div className="text-zinc-400">
-                                    End: {session.endTime.toLocaleString(undefined, {
-                                      year: 'numeric',
-                                      month: 'short',
-                                      day: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                      hour12: false,
-                                    })}
-                                  </div>
-                                ) : (
-                                  <div className="text-emerald-400">Ongoing</div>
-                                )}
-                              </div>
+                              ) : (
+                                <div className="text-emerald-400">Ongoing</div>
+                              )}
                             </div>
                           </div>
                         );
-                      })}
+                      })()}
                     </div>
                   );
                 })}

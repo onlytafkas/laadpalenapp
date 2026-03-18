@@ -29,11 +29,20 @@ export default async function DashboardPage() {
     redirect("/");
   }
 
-  const [sessions, stations, currentUserInfo] = await Promise.all([
+  const clerk = await clerkClient();
+  const [sessions, stations, currentUserInfo, currentClerkUser] = await Promise.all([
     getUserLoadingSessions(userId),
     getAllStations(),
     getUserInfo(userId),
+    clerk.users.getUser(userId),
   ]);
+
+  const currentUserEmail =
+    currentClerkUser.emailAddresses.find(
+      (e) => e.id === currentClerkUser.primaryEmailAddressId
+    )?.emailAddress ??
+    currentClerkUser.emailAddresses[0]?.emailAddress ??
+    "";
 
   const isAdmin = (currentUserInfo?.isAdmin ?? false) && (currentUserInfo?.isActive ?? false);
 
@@ -54,7 +63,6 @@ export default async function DashboardPage() {
   const userCarPlates = new Map<string, string>();
 
   if (isAdmin) {
-    const clerk = await clerkClient();
     for (const user of users) {
       try {
         const clerkUser = await clerk.users.getUser(user.userId);
@@ -75,9 +83,15 @@ export default async function DashboardPage() {
   const now = new Date();
   // Admin sees stats and sessions for all users; regular users see only their own
   const displaySessions = isAdmin ? allSessions : sessions;
-  const completedSessions = displaySessions.filter((s) => s.endTime && new Date(s.endTime) <= now);
-  const activeSessions = displaySessions.filter((s) => new Date(s.startTime) <= now && (!s.endTime || new Date(s.endTime) > now));
-  const futureSessions = displaySessions.filter((s) => new Date(s.startTime) > now);
+  const completedSessions = displaySessions
+    .filter((s) => s.endTime && new Date(s.endTime) <= now)
+    .sort((a, b) => new Date(b.endTime!).getTime() - new Date(a.endTime!).getTime());
+  const activeSessions = displaySessions
+    .filter((s) => new Date(s.startTime) <= now && (!s.endTime || new Date(s.endTime) > now))
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+  const futureSessions = displaySessions
+    .filter((s) => new Date(s.startTime) > now)
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
   // Stats cards always show data for all users
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -107,7 +121,7 @@ export default async function DashboardPage() {
               Dashboard
             </h1>
             <p className="text-lg text-zinc-400">
-              Monitor and manage your charging stations
+              Monitor and manage charging - {currentUserEmail}
             </p>
           </div>
           <CreateSessionDialog stations={stations} hasUserInfo={!!currentUserInfo} isUserActive={currentUserInfo?.isActive ?? false} />

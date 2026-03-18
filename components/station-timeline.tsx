@@ -294,7 +294,7 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
                         // Show car plate badge: on active/future always; on completed only for the latest one
                         const showCarPlate = carPlate && (isActive || isFuture || isLatestCompleted) && (isAdmin || isOwnSession);
 
-                        // Other users' sessions (non-admin): plain coloured block, no info, no click
+                        // Other users' sessions (non-admin): coloured block with hover tooltip but no car plate
                         if (!isOwnSession && !isAdmin) {
                           const otherClass = isActive
                             ? "bg-emerald-500/80 border border-emerald-400/50 opacity-60"
@@ -304,9 +304,41 @@ export function StationTimeline({ sessions, stations, userCarPlates, currentUser
                           return (
                             <div
                               key={session.id}
-                              className={`absolute top-1 bottom-1 rounded cursor-default ${otherClass}`}
+                              className={`absolute top-1 bottom-1 rounded cursor-default group ${otherClass}`}
                               style={{ left: `${startPos}%`, width: `${width}%` }}
-                            />
+                            >
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-30">
+                                <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs shadow-lg whitespace-nowrap">
+                                  <div className="font-medium text-white mb-1">
+                                    {session.station.name}
+                                  </div>
+                                  <div className="text-zinc-400">
+                                    Start: {session.startTime.toLocaleString(undefined, {
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: false,
+                                    })}
+                                  </div>
+                                  {session.endTime ? (
+                                    <div className="text-zinc-400">
+                                      End: {session.endTime.toLocaleString(undefined, {
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        hour12: false,
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <div className="text-emerald-400">Ongoing</div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           );
                         }
 

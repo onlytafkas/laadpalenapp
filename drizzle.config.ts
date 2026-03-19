@@ -1,13 +1,8 @@
 import 'dotenv/config';
 import { defineConfig } from 'drizzle-kit';
+import { withLibpqSslCompatibility } from './lib/postgres-connection-string';
 
-// Ensure the connection string has the recommended SSL mode
-let connectionString = process.env.DATABASE_URL!;
-if (!connectionString.includes('sslmode=')) {
-  connectionString += connectionString.includes('?') 
-    ? '&sslmode=verify-full' 
-    : '?sslmode=verify-full';
-}
+const connectionString = withLibpqSslCompatibility(process.env.DATABASE_URL!);
 
 export default defineConfig({
   out: './drizzle',

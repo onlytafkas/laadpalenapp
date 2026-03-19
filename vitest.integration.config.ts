@@ -9,7 +9,7 @@ export default defineConfig({
     // Run all integration test files in a single process so they share the
     // same pg-mem singleton (module cache) and backup/restore cleanly.
     pool: "forks",
-    singleFork: true,
+    fileParallelism: false,
   },
   resolve: {
     alias: {

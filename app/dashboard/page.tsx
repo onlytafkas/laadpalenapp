@@ -212,16 +212,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* Tabs for Timeline and Sessions */}
-        {!isAdmin && displaySessions.length === 0 ? (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-8 backdrop-blur">
-            <div className="text-center py-12">
-              <p className="text-zinc-400 text-lg">
-                No charging sessions yet. Click &ldquo;Reserve Session&rdquo; to begin your first charging session.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <Tabs defaultValue="timeline" className="w-full">
+        <Tabs defaultValue="timeline" className="w-full">
             <div className="mb-1 flex items-center justify-between">
               <TabsList>
                 <TabsTrigger value="timeline">Timeline</TabsTrigger>
@@ -238,6 +229,15 @@ export default async function DashboardPage() {
             </TabsContent>
             
             <TabsContent value="sessions" className="mt-0">
+              {!isAdmin && displaySessions.length === 0 ? (
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-8 backdrop-blur">
+                  <div className="text-center py-12">
+                    <p className="text-zinc-400 text-lg">
+                      No charging sessions yet. Click &ldquo;Reserve Session&rdquo; to begin your first charging session.
+                    </p>
+                  </div>
+                </div>
+              ) : (
               <div className="grid gap-6 lg:grid-cols-3">
             {/* Completed Sessions Card */}
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 backdrop-blur">
@@ -407,6 +407,7 @@ export default async function DashboardPage() {
               )}
             </div>
           </div>
+              )}
             </TabsContent>
 
             <TabsContent value="stations" className="mt-0">
@@ -562,8 +563,7 @@ export default async function DashboardPage() {
               </div>
               )}
             </TabsContent>
-          </Tabs>
-        )}
+        </Tabs>
       </div>
     </div>
   );

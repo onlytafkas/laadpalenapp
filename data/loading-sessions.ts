@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { sessions } from "@/db/schema";
-import { eq, desc, and, ne, gt } from "drizzle-orm";
+import { sessions, stations } from "@/db/schema";
+import { eq, desc, and, ne, gt, lte } from "drizzle-orm";
 
 /** Strips seconds and milliseconds so timestamps are stored at minute precision. */
 function toMinute(date: Date): Date {
@@ -9,25 +9,32 @@ function toMinute(date: Date): Date {
   return d;
 }
 
-export async function getUserLoadingSessions(userId: string) {
-  const userSessions = await db.query.sessions.findMany({
-    where: eq(sessions.userId, userId),
-    with: {
-      station: true,
-    },
-    orderBy: [desc(sessions.startTime)],
-  });
+const sessionWithStationSelect = {
+  id: sessions.id,
+  userId: sessions.userId,
+  stationId: sessions.stationId,
+  startTime: sessions.startTime,
+  endTime: sessions.endTime,
+  reminderStartSent: sessions.reminderStartSent,
+  reminderEndSent: sessions.reminderEndSent,
+  station: stations,
+};
 
-  return userSessions;
+export async function getUserLoadingSessions(userId: string) {
+  return db
+    .select(sessionWithStationSelect)
+    .from(sessions)
+    .innerJoin(stations, eq(sessions.stationId, stations.id))
+    .where(eq(sessions.userId, userId))
+    .orderBy(desc(sessions.startTime));
 }
 
 export async function getAllLoadingSessions() {
-  return db.query.sessions.findMany({
-    with: {
-      station: true,
-    },
-    orderBy: [desc(sessions.startTime)],
-  });
+  return db
+    .select(sessionWithStationSelect)
+    .from(sessions)
+    .innerJoin(stations, eq(sessions.stationId, stations.id))
+    .orderBy(desc(sessions.startTime));
 }
 
 interface CreateLoadingSessionInput {
@@ -87,7 +94,13 @@ export async function updateLoadingSession(data: UpdateLoadingSessionInput) {
 
   const [session] = await db
     .update(sessions)
-    .set(values)
+    .set({
+      ...values,
+      // Reset reminder flags whenever times are updated so reminders fire again
+      // at the new scheduled times.
+      reminderStartSent: false,
+      reminderEndSent: false,
+    })
     .where(eq(sessions.id, data.id))
     .returning();
 
@@ -336,4 +349,61 @@ export async function checkCooldownConstraint(
   }
 
   return { valid: true };
+}
+
+/** The upper bound of the reminder window: sessions starting within 16 minutes will be picked up by the next cron run. */
+const REMINDER_WINDOW_MS = 16 * 60_000;
+
+/**
+ * Returns sessions whose startTime falls within (now, now+16min]
+ * and whose start reminder has not yet been sent.
+ * Using "now" as the lower bound means even sessions booked moments before
+ * their start time are caught by the very next cron run (every minute).
+ */
+export async function getSessionsDueForStartReminder() {
+  const now = new Date();
+  const windowEnd = new Date(now.getTime() + REMINDER_WINDOW_MS);
+
+  return db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        gt(sessions.startTime, now),
+        lte(sessions.startTime, windowEnd),
+        eq(sessions.reminderStartSent, false)
+      )
+    );
+}
+
+/**
+ * Returns sessions whose endTime falls within (now, now+16min]
+ * and whose end reminder has not yet been sent.
+ */
+export async function getSessionsDueForEndReminder() {
+  const now = new Date();
+  const windowEnd = new Date(now.getTime() + REMINDER_WINDOW_MS);
+
+  return db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        gt(sessions.endTime, now),
+        lte(sessions.endTime, windowEnd),
+        eq(sessions.reminderEndSent, false)
+      )
+    );
+}
+
+/**
+ * Marks the start or end reminder as sent for a given session.
+ */
+export async function markReminderSent(id: number, type: "start" | "end"): Promise<void> {
+  const values =
+    type === "start"
+      ? { reminderStartSent: true }
+      : { reminderEndSent: true };
+
+  await db.update(sessions).set(values).where(eq(sessions.id, id));
 }

@@ -29,8 +29,8 @@ describe("version", () => {
   });
 
   it("exports the validated package version and display labels", () => {
-    expect(appVersion).toBe("1.0.2");
-    expect(appVersionLabel).toBe("v1.0.2");
-    expect(appNameWithVersion).toBe(`${APP_NAME} v1.0.2`);
+    expect(appVersion).toBe("1.3.0");
+    expect(appVersionLabel).toBe("v1.3.0");
+    expect(appNameWithVersion).toBe(`${APP_NAME} v1.3.0`);
   });
 });

@@ -16,10 +16,11 @@ export class UserPage {
   }
 
   /** Fill the create-user form */
-  async fillCreateUser(userId: string, carNumberPlate: string) {
+  async fillCreateUser(userId: string, carNumberPlate: string, mobileNumber: string) {
     const dialog = this.page.getByRole("dialog", { name: "Add New User" });
     await dialog.getByLabel("User ID").fill(userId);
     await dialog.getByLabel("Car Number Plate").fill(carNumberPlate);
+    await dialog.getByLabel("Mobile Number").fill(mobileNumber);
   }
 
   /** Submit the create-user dialog */

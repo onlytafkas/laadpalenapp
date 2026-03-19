@@ -21,6 +21,18 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+## SMS Notifications
+
+Session create, update, and delete actions can send an SMS to the affected user when the following environment variables are configured:
+
+```bash
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM_NUMBER=
+```
+
+The app reads the destination number from the `mobile_number` stored in the `usersinfo` table. If Twilio is not configured, SMS delivery is skipped. Session creation is blocked when a registered user does not have a mobile number on file.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Versioning
@@ -43,7 +55,15 @@ npm run version:major
 
 ## Release Notes
 
-### v1.0.2
+### v1.2.0
+
+- Moved session SMS delivery to the `usersinfo.mobile_number` field managed in the dashboard and blocked session creation when a mobile number is missing.
+
+### v1.1.0
+
+- Added Twilio-backed SMS notifications for session creation, updates, and deletions using each user's primary Clerk phone number.
+
+### v1.0.3
 
 - Removed the ability to edit active sessions from the Sessions tab.
 

@@ -12,6 +12,7 @@ applyTo: "**"
 - Every new piece of business logic MUST have **both unit tests and integration tests** written before or alongside the implementation.
 - Every new user-facing feature, admin workflow, auth flow, or end-to-end business journey MUST have a **meaningful Playwright E2E test** written before or alongside the implementation.
 - Tests must be **meaningful**: each test asserts real behaviour and covers a distinct scenario. Never write tests that exist only to inflate coverage numbers.
+- Do not commit skipped tests (`it.skip`, `test.skip`, `describe.skip`) or focused tests (`it.only`, `test.only`, `describe.only`). If a test must be temporarily disabled while diagnosing infrastructure, document the root cause in the relevant instruction or issue, fix it immediately, and remove the skip before finishing the task.
 - Tests are not optional and must pass before any change is considered complete.
 
 After **every** code change (no exceptions):
@@ -301,6 +302,14 @@ beforeEach(() => {
 5. **One concept per test** — keep each `it()` focused on a single scenario
 6. **Descriptive names** — write test names as sentences: `"returns error when station is not found"`
 7. **No dead coverage** — do not spy or call a function just to move a line into the covered set without asserting its return value or side effect
+
+## External Service Testing
+
+- Tests must never trigger real external side effects such as SMS, email, or third-party mutations.
+- For server actions, route handlers, and other callers of `lib/session-sms.ts`, mock `sendSessionEventSms` and assert that it was invoked with the expected payload.
+- Keep Twilio transport coverage isolated to `__tests__/lib/session-sms.test.ts`, where `fetch` is stubbed and the request URL, headers, and body are asserted directly.
+- When E2E needs the real application path to execute SMS logic, point Twilio traffic at a local mock server via environment configuration instead of disabling the code path or calling the real Twilio API.
+- When testing expected failure paths that log errors, stub `console.error` in the test so intentional failures do not pollute the test output.
 
 ---
 

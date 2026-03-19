@@ -28,6 +28,7 @@ mem.public.none(`
   CREATE TABLE usersinfo (
     user_id TEXT PRIMARY KEY,
     car_number_plate TEXT NOT NULL UNIQUE,
+    mobile_number TEXT,
     is_active BOOLEAN NOT NULL DEFAULT true,
     is_admin BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -39,7 +40,9 @@ mem.public.none(`
     user_id TEXT NOT NULL,
     station_id INTEGER NOT NULL REFERENCES stations(id),
     start_time TIMESTAMP NOT NULL DEFAULT NOW(),
-    end_time TIMESTAMP
+    end_time TIMESTAMP,
+    reminder_start_sent BOOLEAN NOT NULL DEFAULT false,
+    reminder_end_sent   BOOLEAN NOT NULL DEFAULT false
   );
 
   CREATE TABLE audit_logs (
@@ -73,12 +76,12 @@ const { Pool } = mem.adapters.createPg();
  *      returns back into positional arrays using the `fields` descriptor,
  *      so drizzle-orm's internal row-mapping code stays correct.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function adaptConfig(config: unknown): { stripped: unknown; needsArrayRows: boolean } {
   if (config === null || typeof config !== "object") {
     return { stripped: config, needsArrayRows: false };
   }
-  const { types: _types, rowMode, ...rest } = config as Record<string, unknown>;
+  const { types, rowMode, ...rest } = config as Record<string, unknown>;
+  void types;
   return { stripped: rest, needsArrayRows: rowMode === "array" };
 }
 

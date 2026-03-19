@@ -22,6 +22,8 @@ export function makeSession(overrides: Partial<{
   stationId: number;
   startTime: Date;
   endTime: Date | null;
+  reminderStartSent: boolean;
+  reminderEndSent: boolean;
 }> = {}) {
   return {
     id: 1,
@@ -29,6 +31,8 @@ export function makeSession(overrides: Partial<{
     stationId: 1,
     startTime: new Date("2026-03-18T10:00:00.000Z"),
     endTime: new Date("2026-03-18T11:00:00.000Z"),
+    reminderStartSent: false,
+    reminderEndSent: false,
     ...overrides,
   };
 }
@@ -36,6 +40,7 @@ export function makeSession(overrides: Partial<{
 export function makeUserInfo(overrides: Partial<{
   userId: string;
   carNumberPlate: string;
+  mobileNumber: string | null;
   isActive: boolean;
   isAdmin: boolean;
   createdAt: Date;
@@ -44,6 +49,7 @@ export function makeUserInfo(overrides: Partial<{
   return {
     userId: "user_test123",
     carNumberPlate: "ABC-1234",
+    mobileNumber: "+15551234567",
     isActive: true,
     isAdmin: false,
     createdAt: new Date("2026-01-01T00:00:00.000Z"),

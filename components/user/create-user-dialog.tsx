@@ -20,6 +20,7 @@ export function CreateUserDialog() {
   const [open, setOpen] = useState(false);
   const [userId, setUserId] = useState("");
   const [carNumberPlate, setCarNumberPlate] = useState("");
+  const [mobileNumber, setMobileNumber] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +32,7 @@ export function CreateUserDialog() {
     const result = await createUserAction({
       userId,
       carNumberPlate,
+      mobileNumber,
     });
 
     if (result.error) {
@@ -40,6 +42,7 @@ export function CreateUserDialog() {
       // Reset form and close dialog
       setUserId("");
       setCarNumberPlate("");
+      setMobileNumber("");
       setOpen(false);
       setIsSubmitting(false);
     }
@@ -58,7 +61,7 @@ export function CreateUserDialog() {
           <DialogHeader>
             <DialogTitle>Add New User</DialogTitle>
             <DialogDescription>
-              Create a new user. Enter the user ID and car number plate. Email will be fetched from Clerk.
+              Create a new user. Enter the user ID, car number plate, and mobile number. Email will be fetched from Clerk.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -82,6 +85,18 @@ export function CreateUserDialog() {
                 placeholder="e.g., ABC-123"
                 required
                 maxLength={20}
+                disabled={isSubmitting}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="mobileNumber">Mobile Number</Label>
+              <Input
+                id="mobileNumber"
+                value={mobileNumber}
+                onChange={(e) => setMobileNumber(e.target.value)}
+                placeholder="e.g., +15551234567"
+                required
+                maxLength={30}
                 disabled={isSubmitting}
               />
             </div>

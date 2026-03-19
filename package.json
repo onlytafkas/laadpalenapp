@@ -1,6 +1,6 @@
 {
   "name": "charging-stations-app",
-  "version": "1.0.2",
+  "version": "1.3.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -21,7 +21,7 @@
     "test:e2e:ui": "tsx scripts/e2e-run.ts --ui",
     "test:e2e:migrate": "node -e \"console.log('E2E schema migration now runs automatically inside npm run test:e2e after the temporary Neon branch is created.')\"",
     "test:e2e:pw": "tsx scripts/e2e-run.ts",
-    "test:piramid": "npm run test && npm run test:coverage && npm run test integration && npm run test:e2e"
+    "test:piramid": "npm run test && npm run test:coverage && npm run test:integration && npm run test:e2e"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.0.4",

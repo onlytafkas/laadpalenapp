@@ -189,7 +189,7 @@ describe("checkStationHasSessions", () => {
 
   it("returns true after a session is linked to the station", async () => {
     const station = await createStation({ name: "Busy Station" });
-    await createUser({ userId: "user_s1", carNumberPlate: "XX-001" });
+    await createUser({ userId: "user_s1", carNumberPlate: "XX-001", mobileNumber: "+15550000040" });
     await createLoadingSession({
       userId: "user_s1",
       stationId: station.id,

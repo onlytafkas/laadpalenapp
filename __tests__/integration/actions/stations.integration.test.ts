@@ -48,9 +48,9 @@ let backup: ReturnType<typeof mem.backup>;
 beforeAll(async () => {
   emptyBackup.restore();
   // Seed an admin user and a regular user
-  await createUser({ userId: ADMIN_ID, carNumberPlate: "ADM-001" });
+  await createUser({ userId: ADMIN_ID, carNumberPlate: "ADM-001", mobileNumber: "+15550000020" });
   await updateUserToAdmin(ADMIN_ID);
-  await createUser({ userId: REGULAR_USER_ID, carNumberPlate: "REG-001" });
+  await createUser({ userId: REGULAR_USER_ID, carNumberPlate: "REG-001", mobileNumber: "+15550000021" });
 
   backup = mem.backup();
 });
@@ -72,6 +72,7 @@ async function updateUserToAdmin(userId: string) {
   await updateUser({
     userId,
     carNumberPlate: user.carNumberPlate,
+    mobileNumber: user.mobileNumber,
     isActive: true,
     isAdmin: true,
   });

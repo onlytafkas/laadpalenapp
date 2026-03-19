@@ -24,6 +24,7 @@ const {
   mockUpdateUser,
   mockDeactivateUser,
   mockActivateUser,
+  mockSendSessionEventSms,
 } = vi.hoisted(() => ({
   mockAuthUserId: { value: "user_test123" as string | null },
   mockGetUserInfo: vi.fn(),
@@ -43,6 +44,7 @@ const {
   mockUpdateUser: vi.fn(),
   mockDeactivateUser: vi.fn(),
   mockActivateUser: vi.fn(),
+  mockSendSessionEventSms: vi.fn(),
 }));
 
 // -- Clerk auth --
@@ -98,6 +100,10 @@ vi.mock("@/data/audit", () => ({
   insertAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/session-sms", () => ({
+  sendSessionEventSms: mockSendSessionEventSms,
+}));
+
 // -----------------------------------------------------------------------
 // Import actions after mocks are registered
 // -----------------------------------------------------------------------
@@ -150,6 +156,7 @@ beforeEach(() => {
   mockCheckSessionOverlap.mockResolvedValue(false);
   mockFindNextAvailableStartTime.mockResolvedValue(null);
   mockCreateLoadingSession.mockResolvedValue(makeSession());
+  mockSendSessionEventSms.mockResolvedValue({ status: "sent" });
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -173,6 +180,12 @@ describe("createSession", () => {
     mockGetUserInfo.mockResolvedValue(activeUser({ isActive: false }));
     const result = await createSession(validSessionInput());
     expect(result.error).toMatch(/deactivated/i);
+  });
+
+  it("returns error when user account has no mobile number", async () => {
+    mockGetUserInfo.mockResolvedValue(activeUser({ mobileNumber: null }));
+    const result = await createSession(validSessionInput());
+    expect(result.error).toMatch(/mobile number/i);
   });
 
   it("returns error when cooldown constraint is violated", async () => {
@@ -213,9 +226,17 @@ describe("createSession", () => {
   it("returns success when all checks pass", async () => {
     const session = makeSession();
     mockCreateLoadingSession.mockResolvedValue(session);
+    mockGetStationById.mockResolvedValue(makeStation({ id: session.stationId, name: "Station A" }));
 
     const result = await createSession(validSessionInput());
     expect(result).toEqual({ success: true, data: session });
+    expect(mockSendSessionEventSms).toHaveBeenCalledWith({
+      eventType: "created",
+      userId: session.userId,
+      stationName: "Station A",
+      startTime: session.startTime,
+      endTime: session.endTime,
+    });
   });
 
   it("returns validation error for invalid stationId (Zod)", async () => {
@@ -265,21 +286,39 @@ describe("deleteSession", () => {
   });
 
   it("allows the session owner to delete their own session", async () => {
-    mockGetSessionById.mockResolvedValue(makeSession({ userId: "user_test123" }));
+    const session = makeSession({ userId: "user_test123" });
+    mockGetSessionById.mockResolvedValue(session);
+    mockGetStationById.mockResolvedValue(makeStation({ id: session.stationId, name: "Station A" }));
     mockDeleteLoadingSession.mockResolvedValue(undefined);
 
     const result = await deleteSession(1);
     expect(result).toEqual({ success: true });
     expect(mockDeleteLoadingSession).toHaveBeenCalledWith(1);
+    expect(mockSendSessionEventSms).toHaveBeenCalledWith({
+      eventType: "deleted",
+      userId: session.userId,
+      stationName: "Station A",
+      startTime: session.startTime,
+      endTime: session.endTime,
+    });
   });
 
   it("allows an active admin to delete any session", async () => {
-    mockGetSessionById.mockResolvedValue(makeSession({ userId: "other_user" }));
+    const session = makeSession({ userId: "other_user" });
+    mockGetSessionById.mockResolvedValue(session);
+    mockGetStationById.mockResolvedValue(makeStation({ id: session.stationId, name: "Station A" }));
     mockGetUserInfo.mockResolvedValue(adminUser({ userId: "user_test123" }));
     mockDeleteLoadingSession.mockResolvedValue(undefined);
 
     const result = await deleteSession(1);
     expect(result).toEqual({ success: true });
+    expect(mockSendSessionEventSms).toHaveBeenCalledWith({
+      eventType: "deleted",
+      userId: session.userId,
+      stationName: "Station A",
+      startTime: session.startTime,
+      endTime: session.endTime,
+    });
   });
 });
 
@@ -423,6 +462,30 @@ describe("updateSession", () => {
     });
   });
 
+  it("returns success and sends an SMS when the update succeeds", async () => {
+    const existingSession = makeSession({ userId: "user_test123" });
+    const updatedSession = makeSession({
+      id: 1,
+      userId: "user_test123",
+      startTime: new Date("2026-03-18T12:00:00.000Z"),
+      endTime: new Date("2026-03-18T13:00:00.000Z"),
+    });
+    mockGetSessionById.mockResolvedValue(existingSession);
+    mockGetStationById.mockResolvedValue(makeStation({ id: updatedSession.stationId, name: "Station A" }));
+    mockUpdateLoadingSession.mockResolvedValue(updatedSession);
+
+    const result = await updateSession(validUpdateInput());
+
+    expect(result).toEqual({ success: true, data: updatedSession });
+    expect(mockSendSessionEventSms).toHaveBeenCalledWith({
+      eventType: "updated",
+      userId: updatedSession.userId,
+      stationName: "Station A",
+      startTime: updatedSession.startTime,
+      endTime: updatedSession.endTime,
+    });
+  });
+
   it("allows the session owner to update their own session successfully", async () => {
     const session = makeSession({ userId: "user_test123" });
     mockGetSessionById.mockResolvedValue(session);
@@ -484,31 +547,31 @@ describe("updateStationAction", () => {
 describe("createUserAction", () => {
   it("returns error when unauthenticated", async () => {
     mockAuthUserId.value = null;
-    const result = await createUserAction({ userId: "user_xyz", carNumberPlate: "ABC123" });
+    const result = await createUserAction({ userId: "user_xyz", carNumberPlate: "ABC123", mobileNumber: "+15551234567" });
     expect(result).toEqual({ error: "Unauthorized" });
   });
 
   it("returns error when user is not an admin", async () => {
     mockGetUserInfo.mockResolvedValue(activeUser({ isAdmin: false }));
-    const result = await createUserAction({ userId: "user_xyz", carNumberPlate: "ABC123" });
+    const result = await createUserAction({ userId: "user_xyz", carNumberPlate: "ABC123", mobileNumber: "+15551234567" });
     expect(result.error).toMatch(/admin/i);
   });
 
   it("returns validation error when userId is empty", async () => {
     mockGetUserInfo.mockResolvedValue(adminUser());
-    const result = await createUserAction({ userId: "", carNumberPlate: "ABC123" });
+    const result = await createUserAction({ userId: "", carNumberPlate: "ABC123", mobileNumber: "+15551234567" });
     expect(result.error).toBeDefined();
   });
 
   it("creates the user successfully when called by an active admin", async () => {
     mockGetUserInfo.mockResolvedValue(adminUser());
-    const newUser = makeUserInfo({ userId: "user_xyz", carNumberPlate: "ABC123" });
+    const newUser = makeUserInfo({ userId: "user_xyz", carNumberPlate: "ABC123", mobileNumber: "+15551234567" });
     mockCreateUser.mockResolvedValue(newUser);
 
-    const result = await createUserAction({ userId: "user_xyz", carNumberPlate: "ABC123" });
+    const result = await createUserAction({ userId: "user_xyz", carNumberPlate: "ABC123", mobileNumber: "+15551234567" });
     expect(result).toEqual({ success: true, data: newUser });
     expect(mockCreateUser).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "user_xyz", carNumberPlate: "ABC123", isActive: true })
+      expect.objectContaining({ userId: "user_xyz", carNumberPlate: "ABC123", mobileNumber: "+15551234567", isActive: true })
     );
   });
 
@@ -516,7 +579,7 @@ describe("createUserAction", () => {
     mockGetUserInfo.mockResolvedValue(adminUser());
     mockCreateUser.mockRejectedValue(new Error("duplicate userId"));
 
-    const result = await createUserAction({ userId: "user_xyz", carNumberPlate: "ABC123" });
+    const result = await createUserAction({ userId: "user_xyz", carNumberPlate: "ABC123", mobileNumber: "+15551234567" });
     expect(result).toEqual({ error: "Failed to create user. User ID or car number plate may already exist." });
   });
 });
@@ -525,7 +588,7 @@ describe("createUserAction", () => {
 // updateUserAction
 // -----------------------------------------------------------------------
 describe("updateUserAction", () => {
-  const validInput = { userId: "user_xyz", carNumberPlate: "ABC123", isActive: true, isAdmin: false };
+  const validInput = { userId: "user_xyz", carNumberPlate: "ABC123", mobileNumber: "+15551234567", isActive: true, isAdmin: false };
 
   it("returns error when unauthenticated", async () => {
     mockAuthUserId.value = null;

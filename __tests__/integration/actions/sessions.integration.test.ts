@@ -26,11 +26,19 @@ vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
 
+const { mockSendSessionEventSms } = vi.hoisted(() => ({
+  mockSendSessionEventSms: vi.fn(),
+}));
+
+vi.mock("@/lib/session-sms", () => ({
+  sendSessionEventSms: mockSendSessionEventSms,
+}));
+
 import { mem, emptyBackup } from "@/__tests__/integration/helpers/test-db";
-import { createSession } from "@/app/dashboard/actions";
+import { createSession, updateSession, deleteSession } from "@/app/dashboard/actions";
 import { createUser } from "@/data/usersinfo";
 import { createStation } from "@/data/stations";
-import { createLoadingSession } from "@/data/loading-sessions";
+import { createLoadingSession, getSessionById } from "@/data/loading-sessions";
 import { getAllAuditLogs } from "@/data/audit";
 
 const USER_ID = "sess_user";
@@ -58,7 +66,7 @@ function isoTodayPlusHours(offsetHours: number) {
 
 beforeAll(async () => {
   emptyBackup.restore();
-  await createUser({ userId: USER_ID, carNumberPlate: "SS-001" });
+  await createUser({ userId: USER_ID, carNumberPlate: "SS-001", mobileNumber: "+15550000001" });
   const station = await createStation({ name: "Session Action Station" });
   stationId = station.id;
   backup = mem.backup();
@@ -71,6 +79,7 @@ afterAll(() => {
 beforeEach(() => {
   backup.restore();
   mockUserId.value = USER_ID;
+  mockSendSessionEventSms.mockResolvedValue({ status: "sent" });
 });
 
 // ── createSession ──────────────────────────────────────────────────────────────
@@ -104,8 +113,10 @@ describe("createSession", () => {
     await createUser({
       userId: "deact_user",
       carNumberPlate: "DU-001",
+      mobileNumber: "+15550000002",
       isActive: false,
     });
+
     mockUserId.value = "deact_user";
 
     const result = await createSession({
@@ -115,6 +126,19 @@ describe("createSession", () => {
     });
 
     expect(result).toMatchObject({ error: expect.stringContaining("deactivated") });
+  });
+
+  it("returns an error when the user's account has no mobile number", async () => {
+    await createUser({ userId: "no_mobile_user", carNumberPlate: "NM-001" });
+    mockUserId.value = "no_mobile_user";
+
+    const result = await createSession({
+      stationId,
+      startTime: isoToday(10),
+      endTime: isoToday(11),
+    });
+
+    expect(result).toMatchObject({ error: expect.stringContaining("mobile number") });
   });
 
   it("creates a session and persists it, returning success with data", async () => {
@@ -127,6 +151,13 @@ describe("createSession", () => {
     expect(result).toMatchObject({
       success: true,
       data: expect.objectContaining({ userId: USER_ID, stationId }),
+    });
+    expect(mockSendSessionEventSms).toHaveBeenCalledWith({
+      eventType: "created",
+      userId: USER_ID,
+      stationName: "Session Action Station",
+      startTime: expect.any(Date),
+      endTime: expect.any(Date),
     });
   });
 
@@ -149,7 +180,7 @@ describe("createSession", () => {
   it("returns needsConfirmation with an adjusted time when the slot is taken", async () => {
     // Seed an existing session from a DIFFERENT user so USER_ID's 4-hour cooldown
     // is not triggered, while the station slot is still blocked.
-    await createUser({ userId: "blocker_user", carNumberPlate: "BL-001" });
+    await createUser({ userId: "blocker_user", carNumberPlate: "BL-001", mobileNumber: "+15550000003" });
     await createLoadingSession({
       userId: "blocker_user",
       stationId,
@@ -207,5 +238,62 @@ describe("createSession", () => {
     );
     expect(log).toBeDefined();
     expect(log!.performedByUserId).toBeNull();
+  });
+});
+
+describe("updateSession", () => {
+  it("updates a session, persists the change, and sends an SMS", async () => {
+    const session = await createLoadingSession({
+      userId: USER_ID,
+      stationId,
+      startTime: isoTomorrow(10),
+      endTime: isoTomorrow(11),
+    });
+
+    const result = await updateSession({
+      id: session.id,
+      stationId,
+      startTime: isoTomorrow(12),
+      endTime: isoTomorrow(13),
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      data: expect.objectContaining({ id: session.id, stationId }),
+    });
+
+    const updated = await getSessionById(session.id);
+    expect(updated).not.toBeNull();
+    expect(new Date(updated!.startTime).getUTCHours()).toBe(new Date(isoTomorrow(12)).getUTCHours());
+    expect(mockSendSessionEventSms).toHaveBeenCalledWith({
+      eventType: "updated",
+      userId: USER_ID,
+      stationName: "Session Action Station",
+      startTime: expect.any(Date),
+      endTime: expect.any(Date),
+    });
+  });
+});
+
+describe("deleteSession", () => {
+  it("deletes a session, removes it from the database, and sends an SMS", async () => {
+    const session = await createLoadingSession({
+      userId: USER_ID,
+      stationId,
+      startTime: isoTomorrow(10),
+      endTime: isoTomorrow(11),
+    });
+
+    const result = await deleteSession(session.id);
+
+    expect(result).toEqual({ success: true });
+    expect(await getSessionById(session.id)).toBeNull();
+    expect(mockSendSessionEventSms).toHaveBeenCalledWith({
+      eventType: "deleted",
+      userId: USER_ID,
+      stationName: "Session Action Station",
+      startTime: expect.any(Date),
+      endTime: expect.any(Date),
+    });
   });
 });

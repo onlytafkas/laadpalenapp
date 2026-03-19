@@ -45,6 +45,7 @@ export default async function globalSetup() {
   await testDb.insert(usersinfo).values({
     userId: E2E_ADMIN_USER_ID,
     carNumberPlate: "E2E-ADM-001",
+    mobileNumber: "+15550001000",
     isActive: true,
     isAdmin: true,
   });
@@ -53,6 +54,7 @@ export default async function globalSetup() {
   await testDb.insert(usersinfo).values({
     userId: E2E_REGULAR_USER_ID,
     carNumberPlate: "E2E-USR-001",
+    mobileNumber: "+15550001001",
     isActive: true,
     isAdmin: false,
   });

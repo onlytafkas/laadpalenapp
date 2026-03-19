@@ -41,7 +41,6 @@ import {
 import { getAllAuditLogs } from "@/data/audit";
 import { createUser } from "@/data/usersinfo";
 import { updateUser } from "@/data/usersinfo";
-import { getUserInfo } from "@/data/usersinfo";
 
 const ADMIN_ID = "flow_admin";
 const REGULAR_USER_ID = "flow_regular";
@@ -57,10 +56,11 @@ function isoToday(h: number, m = 0) {
 beforeAll(async () => {
   emptyBackup.restore();
   // Seed and promote admin
-  await createUser({ userId: ADMIN_ID, carNumberPlate: "FL-ADM-001" });
+  await createUser({ userId: ADMIN_ID, carNumberPlate: "FL-ADM-001", mobileNumber: "+15550000010" });
   await updateUser({
     userId: ADMIN_ID,
     carNumberPlate: "FL-ADM-001",
+    mobileNumber: "+15550000010",
     isActive: true,
     isAdmin: true,
   });
@@ -89,6 +89,7 @@ describe("session lifecycle flow", () => {
     const userResult = await createUserAction({
       userId: REGULAR_USER_ID,
       carNumberPlate: "FL-USR-001",
+      mobileNumber: "+15550000011",
     });
     expect(userResult).toMatchObject({ success: true });
 
@@ -118,7 +119,7 @@ describe("session lifecycle flow", () => {
     const stationResult = await createStationAction({ name: "Ref Station" });
     const station = (stationResult as { success: true; data: { id: number } }).data;
 
-    await createUserAction({ userId: "ref_user", carNumberPlate: "RF-001" });
+    await createUserAction({ userId: "ref_user", carNumberPlate: "RF-001", mobileNumber: "+15550000012" });
 
     mockUserId.value = "ref_user";
     const sessionResult = await createSession({
@@ -150,7 +151,7 @@ describe("user deactivation and reactivation flow", () => {
     const stationResult = await createStationAction({ name: "Deact Flow Station" });
     const station = (stationResult as { success: true; data: { id: number } }).data;
 
-    await createUserAction({ userId: "deact_flow_user", carNumberPlate: "DF-001" });
+    await createUserAction({ userId: "deact_flow_user", carNumberPlate: "DF-001", mobileNumber: "+15550000013" });
 
     // Admin deactivates the user
     const deactResult = await deactivateUserAction("deact_flow_user");
@@ -185,7 +186,7 @@ describe("user deactivation and reactivation flow", () => {
   it("audit log captures the deactivation, rejection, and reactivation events", async () => {
     const stationResult = await createStationAction({ name: "Audit Flow Station" });
     const station = (stationResult as { success: true; data: { id: number } }).data;
-    await createUserAction({ userId: "audit_flow_user", carNumberPlate: "AF-001" });
+    await createUserAction({ userId: "audit_flow_user", carNumberPlate: "AF-001", mobileNumber: "+15550000014" });
 
     await deactivateUserAction("audit_flow_user");
 

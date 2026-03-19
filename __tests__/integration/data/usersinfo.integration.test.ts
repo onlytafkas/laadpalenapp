@@ -44,8 +44,8 @@ describe("getAllUsers", () => {
   });
 
   it("returns all users ordered by userId ascending", async () => {
-    await createUser({ userId: "user_z", carNumberPlate: "ZZ-001" });
-    await createUser({ userId: "user_a", carNumberPlate: "AA-001" });
+    await createUser({ userId: "user_z", carNumberPlate: "ZZ-001", mobileNumber: "+15550000002" });
+    await createUser({ userId: "user_a", carNumberPlate: "AA-001", mobileNumber: "+15550000001" });
 
     const users = await getAllUsers();
 
@@ -61,10 +61,12 @@ describe("createUser", () => {
     const user = await createUser({
       userId: "user_defaults",
       carNumberPlate: "DF-001",
+      mobileNumber: "+15550000100",
     });
 
     expect(user.userId).toBe("user_defaults");
     expect(user.carNumberPlate).toBe("DF-001");
+    expect(user.mobileNumber).toBe("+15550000100");
     expect(user.isActive).toBe(true);
     expect(user.isAdmin).toBe(false);
     expect(user.createdAt).toBeInstanceOf(Date);
@@ -75,25 +77,35 @@ describe("createUser", () => {
     const user = await createUser({
       userId: "user_inactive",
       carNumberPlate: "IN-001",
+      mobileNumber: "+15550000101",
       isActive: false,
     });
 
     expect(user.isActive).toBe(false);
   });
 
+  it("allows a legacy user row with no mobile number", async () => {
+    const user = await createUser({
+      userId: "user_legacy",
+      carNumberPlate: "LG-001",
+    });
+
+    expect(user.mobileNumber).toBeNull();
+  });
+
   it("throws when the same userId is inserted twice (PK constraint)", async () => {
-    await createUser({ userId: "user_dup", carNumberPlate: "PK-001" });
+    await createUser({ userId: "user_dup", carNumberPlate: "PK-001", mobileNumber: "+15550000102" });
 
     await expect(
-      createUser({ userId: "user_dup", carNumberPlate: "PK-002" })
+      createUser({ userId: "user_dup", carNumberPlate: "PK-002", mobileNumber: "+15550000103" })
     ).rejects.toThrow();
   });
 
   it("throws when the same carNumberPlate is inserted twice (UNIQUE constraint)", async () => {
-    await createUser({ userId: "user_u1", carNumberPlate: "SAME-PLATE" });
+    await createUser({ userId: "user_u1", carNumberPlate: "SAME-PLATE", mobileNumber: "+15550000104" });
 
     await expect(
-      createUser({ userId: "user_u2", carNumberPlate: "SAME-PLATE" })
+      createUser({ userId: "user_u2", carNumberPlate: "SAME-PLATE", mobileNumber: "+15550000105" })
     ).rejects.toThrow();
   });
 });
@@ -102,7 +114,7 @@ describe("createUser", () => {
 
 describe("getUserInfo", () => {
   it("returns the user when found", async () => {
-    await createUser({ userId: "user_find", carNumberPlate: "FN-001" });
+    await createUser({ userId: "user_find", carNumberPlate: "FN-001", mobileNumber: "+15550000106" });
 
     const user = await getUserInfo("user_find");
 
@@ -119,25 +131,28 @@ describe("getUserInfo", () => {
 
 describe("updateUser", () => {
   it("updates carNumberPlate, isActive, and isAdmin fields", async () => {
-    await createUser({ userId: "user_upd", carNumberPlate: "OLD-001" });
+    await createUser({ userId: "user_upd", carNumberPlate: "OLD-001", mobileNumber: "+15550000107" });
 
     const updated = await updateUser({
       userId: "user_upd",
       carNumberPlate: "NEW-001",
+      mobileNumber: "+15550000999",
       isActive: false,
       isAdmin: true,
     });
 
     expect(updated.carNumberPlate).toBe("NEW-001");
+    expect(updated.mobileNumber).toBe("+15550000999");
     expect(updated.isActive).toBe(false);
     expect(updated.isAdmin).toBe(true);
   });
 
   it("persists changes — getUserInfo reflects the update", async () => {
-    await createUser({ userId: "user_persist", carNumberPlate: "PR-001" });
+    await createUser({ userId: "user_persist", carNumberPlate: "PR-001", mobileNumber: "+15550000108" });
     await updateUser({
       userId: "user_persist",
       carNumberPlate: "PR-002",
+      mobileNumber: "+15550000109",
       isActive: true,
       isAdmin: true,
     });
@@ -145,6 +160,7 @@ describe("updateUser", () => {
     const refetched = await getUserInfo("user_persist");
     expect(refetched!.isAdmin).toBe(true);
     expect(refetched!.carNumberPlate).toBe("PR-002");
+    expect(refetched!.mobileNumber).toBe("+15550000109");
   });
 });
 
@@ -152,7 +168,7 @@ describe("updateUser", () => {
 
 describe("deactivateUser", () => {
   it("sets isActive to false for an active user", async () => {
-    await createUser({ userId: "user_deact", carNumberPlate: "DA-001" });
+    await createUser({ userId: "user_deact", carNumberPlate: "DA-001", mobileNumber: "+15550000110" });
 
     const result = await deactivateUser("user_deact");
 
@@ -165,6 +181,7 @@ describe("activateUser", () => {
     await createUser({
       userId: "user_act",
       carNumberPlate: "AC-001",
+      mobileNumber: "+15550000111",
       isActive: false,
     });
 
@@ -174,7 +191,7 @@ describe("activateUser", () => {
   });
 
   it("idempotent — activating an already-active user keeps isActive true", async () => {
-    await createUser({ userId: "user_idem", carNumberPlate: "ID-001" });
+    await createUser({ userId: "user_idem", carNumberPlate: "ID-001", mobileNumber: "+15550000112" });
 
     const result = await activateUser("user_idem");
 
@@ -186,13 +203,13 @@ describe("activateUser", () => {
 
 describe("checkUserHasSessions", () => {
   it("returns false when the user has no sessions", async () => {
-    await createUser({ userId: "user_nosess", carNumberPlate: "NS-001" });
+    await createUser({ userId: "user_nosess", carNumberPlate: "NS-001", mobileNumber: "+15550000113" });
 
     expect(await checkUserHasSessions("user_nosess")).toBe(false);
   });
 
   it("returns true after a session is created for the user", async () => {
-    await createUser({ userId: "user_hassess", carNumberPlate: "HS-001" });
+    await createUser({ userId: "user_hassess", carNumberPlate: "HS-001", mobileNumber: "+15550000114" });
     const station = await createStation({ name: "Sess Station" });
     await createLoadingSession({
       userId: "user_hassess",

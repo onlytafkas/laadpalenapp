@@ -536,6 +536,9 @@ export default async function DashboardPage() {
                                 </span>
                               </div>
                               <div className="text-xs text-zinc-500 mt-1">
+                                Mobile: {user.mobileNumber || "Missing mobile number"}
+                              </div>
+                              <div className="text-xs text-zinc-500 mt-1">
                                 ID: {user.userId}
                               </div>
                             </div>

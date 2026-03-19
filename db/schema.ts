@@ -12,6 +12,7 @@ export const stations = pgTable('stations', {
 export const usersinfo = pgTable('usersinfo', {
   userId: text('user_id').primaryKey(),
   carNumberPlate: text('car_number_plate').notNull().unique(),
+  mobileNumber: text('mobile_number'),
   isActive: boolean('is_active').notNull().default(true),
   isAdmin: boolean('is_admin').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -27,6 +28,8 @@ export const sessions = pgTable('sessions', {
     .references(() => stations.id),
   startTime: timestamp('start_time').notNull().defaultNow(),
   endTime: timestamp('end_time'),
+  reminderStartSent: boolean('reminder_start_sent').notNull().default(false),
+  reminderEndSent: boolean('reminder_end_sent').notNull().default(false),
 });
 
 // Audit logs table

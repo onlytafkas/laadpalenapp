@@ -19,6 +19,7 @@ import { updateUserAction } from "@/app/dashboard/actions";
 interface User {
   userId: string;
   carNumberPlate: string;
+  mobileNumber: string | null;
   isActive: boolean;
   isAdmin: boolean;
 }
@@ -30,6 +31,7 @@ interface EditUserDialogProps {
 export function EditUserDialog({ user }: EditUserDialogProps) {
   const [open, setOpen] = useState(false);
   const [carNumberPlate, setCarNumberPlate] = useState(user.carNumberPlate);
+  const [mobileNumber, setMobileNumber] = useState(user.mobileNumber ?? "");
   const [isActive, setIsActive] = useState(user.isActive);
   const [isAdmin, setIsAdmin] = useState(user.isAdmin);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -43,6 +45,7 @@ export function EditUserDialog({ user }: EditUserDialogProps) {
     const result = await updateUserAction({
       userId: user.userId,
       carNumberPlate,
+      mobileNumber,
       isActive,
       isAdmin,
     });
@@ -90,6 +93,18 @@ export function EditUserDialog({ user }: EditUserDialogProps) {
                 placeholder="e.g., ABC-123"
                 required
                 maxLength={20}
+                disabled={isSubmitting}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="mobileNumber">Mobile Number</Label>
+              <Input
+                id="mobileNumber"
+                value={mobileNumber}
+                onChange={(e) => setMobileNumber(e.target.value)}
+                placeholder="e.g., +15551234567"
+                required
+                maxLength={30}
                 disabled={isSubmitting}
               />
             </div>

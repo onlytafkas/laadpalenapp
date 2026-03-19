@@ -14,7 +14,7 @@ import { test, expect } from "@playwright/test";
 import { eq, inArray } from "drizzle-orm";
 import { loginAsUser } from "../helpers/auth";
 import { testDb, testPool } from "../helpers/db";
-import { sessions, stations } from "../../db/schema";
+import { sessions, stations, usersinfo } from "../../db/schema";
 import { DashboardPage } from "../pages/dashboard.page";
 import { SessionPage } from "../pages/session.page";
 
@@ -159,6 +159,27 @@ test.describe("Session booking", () => {
       page
         .getByRole("dialog", { name: "Reserve Charging Session" })
         .getByText(/cooldown|4.hour|wait|next session/i)
+    ).toBeVisible({ timeout: 7000 });
+  });
+
+  test("booking without a mobile number shows an error", async ({ page }) => {
+    await testDb
+      .update(usersinfo)
+      .set({ mobileNumber: null })
+      .where(eq(usersinfo.userId, E2E_REGULAR_USER_ID));
+
+    await loginAsUser(page);
+    const sessionPage = new SessionPage(page);
+
+    await sessionPage.openReserveDialog();
+    await sessionPage.selectStation(STATION_NAME);
+    await sessionPage.selectDuration("30 minutes");
+    await sessionPage.submitReservation();
+
+    await expect(
+      page
+        .getByRole("dialog", { name: "Reserve Charging Session" })
+        .getByText(/mobile number is missing/i)
     ).toBeVisible({ timeout: 7000 });
   });
 

@@ -65,11 +65,12 @@ describe("createUser", () => {
     const values = vi.fn().mockReturnValue({ returning });
     mockInsert.mockReturnValue({ values });
 
-    const result = await createUser({ userId: "user_test123", carNumberPlate: "ABC-1234" });
+    const result = await createUser({ userId: "user_test123", carNumberPlate: "ABC-1234", mobileNumber: "+15551234567" });
     expect(result).toEqual(created);
 
     const insertedValues = values.mock.calls[0][0] as Record<string, unknown>;
     expect(insertedValues.isActive).toBe(true);
+    expect(insertedValues.mobileNumber).toBe("+15551234567");
   });
 
   it("respects the isActive override", async () => {
@@ -79,10 +80,24 @@ describe("createUser", () => {
     const values = vi.fn().mockReturnValue({ returning });
     mockInsert.mockReturnValue({ values });
 
-    await createUser({ userId: "user_test123", carNumberPlate: "ABC-1234", isActive: false });
+    await createUser({ userId: "user_test123", carNumberPlate: "ABC-1234", mobileNumber: "+15551234567", isActive: false });
 
     const insertedValues = values.mock.calls[0][0] as Record<string, unknown>;
     expect(insertedValues.isActive).toBe(false);
+  });
+
+  it("allows legacy users with no mobile number", async () => {
+    const created = makeUserInfo({ mobileNumber: null });
+
+    const returning = vi.fn().mockResolvedValue([created]);
+    const values = vi.fn().mockReturnValue({ returning });
+    mockInsert.mockReturnValue({ values });
+
+    const result = await createUser({ userId: "legacy_user", carNumberPlate: "LEG-001" });
+    expect(result).toEqual(created);
+
+    const insertedValues = values.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedValues.mobileNumber).toBeNull();
   });
 });
 
@@ -91,7 +106,7 @@ describe("createUser", () => {
 // -----------------------------------------------------------------------
 describe("updateUser", () => {
   it("updates user fields and returns the updated record", async () => {
-    const updated = makeUserInfo({ carNumberPlate: "XYZ-9999", isAdmin: true });
+    const updated = makeUserInfo({ carNumberPlate: "XYZ-9999", mobileNumber: "+15557654321", isAdmin: true });
 
     const returning = vi.fn().mockResolvedValue([updated]);
     const where = vi.fn().mockReturnValue({ returning });
@@ -101,6 +116,7 @@ describe("updateUser", () => {
     const result = await updateUser({
       userId: "user_test123",
       carNumberPlate: "XYZ-9999",
+      mobileNumber: "+15557654321",
       isActive: true,
       isAdmin: true,
     });
@@ -108,6 +124,7 @@ describe("updateUser", () => {
     expect(result).toEqual(updated);
     const setArgs = set.mock.calls[0][0] as Record<string, unknown>;
     expect(setArgs.carNumberPlate).toBe("XYZ-9999");
+    expect(setArgs.mobileNumber).toBe("+15557654321");
     expect(setArgs.isAdmin).toBe(true);
   });
 });

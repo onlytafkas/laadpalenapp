@@ -24,6 +24,9 @@ import {
   checkCooldownConstraint,
   findNextAvailableStartTime,
   findMaxEndTime,
+  getSessionsDueForStartReminder,
+  getSessionsDueForEndReminder,
+  markReminderSent,
 } from "@/data/loading-sessions";
 import { createStation } from "@/data/stations";
 import { createUser } from "@/data/usersinfo";
@@ -38,7 +41,7 @@ beforeAll(async () => {
   emptyBackup.restore();
   const station = await createStation({ name: "Integration Station" });
   stationId = station.id;
-  await createUser({ userId: USER_ID, carNumberPlate: "IT-001" });
+  await createUser({ userId: USER_ID, carNumberPlate: "IT-001", mobileNumber: "+15550000030" });
   backup = mem.backup();
 });
 
@@ -132,10 +135,7 @@ describe("getSessionById", () => {
 // ── getAllLoadingSessions / getUserLoadingSessions ─────────────────────────────
 
 describe("getAllLoadingSessions", () => {
-  // pg-mem does not support the LATERAL JOIN that drizzle generates for
-  // eager-loading relations (`with: { station: true }`). This is a known
-  // pg-mem limitation; the behavior is covered by unit tests.
-  it.skip("returns sessions with the station relation eager-loaded", async () => {
+  it("returns sessions with the station relation eager-loaded", async () => {
     await createLoadingSession({
       userId: USER_ID,
       stationId,
@@ -151,9 +151,8 @@ describe("getAllLoadingSessions", () => {
 });
 
 describe("getUserLoadingSessions", () => {
-  // Same pg-mem LATERAL JOIN limitation as getAllLoadingSessions.
-  it.skip("returns only sessions belonging to the specified user", async () => {
-    await createUser({ userId: "other_user", carNumberPlate: "OT-001" });
+  it("returns only sessions belonging to the specified user", async () => {
+    await createUser({ userId: "other_user", carNumberPlate: "OT-001", mobileNumber: "+15550000031" });
     await createLoadingSession({ userId: USER_ID, stationId, startTime: isoAt(10) });
     await createLoadingSession({ userId: "other_user", stationId, startTime: isoAt(13) });
 
@@ -425,3 +424,90 @@ describe("findMaxEndTime", () => {
     expect(max!.getUTCMinutes()).toBe(55);
   });
 });
+
+// ── Reminder helpers ─────────────────────────────────────────────────────────
+
+describe("getSessionsDueForStartReminder", () => {
+  it("returns an empty array when no sessions fall in the 15-minute window", async () => {
+    // Create a session starting in 60 minutes — well outside the 14–16min window
+    const farFuture = new Date(Date.now() + 60 * 60_000).toISOString();
+    await createLoadingSession({ userId: USER_ID, stationId, startTime: farFuture });
+
+    const due = await getSessionsDueForStartReminder();
+    expect(due).toHaveLength(0);
+  });
+
+  it("returns a session whose startTime is exactly 15 minutes from now", async () => {
+    const fifteenMin = new Date(Date.now() + 15 * 60_000).toISOString();
+    await createLoadingSession({ userId: USER_ID, stationId, startTime: fifteenMin });
+
+    const due = await getSessionsDueForStartReminder();
+    expect(due.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not return a session once reminderStartSent is true", async () => {
+    const fifteenMin = new Date(Date.now() + 15 * 60_000).toISOString();
+    const created = await createLoadingSession({ userId: USER_ID, stationId, startTime: fifteenMin });
+
+    await markReminderSent(created.id, "start");
+
+    const due = await getSessionsDueForStartReminder();
+    expect(due.find((s) => s.id === created.id)).toBeUndefined();
+  });
+});
+
+describe("getSessionsDueForEndReminder", () => {
+  it("returns an empty array when no session end times fall in the window", async () => {
+    const farFuture = new Date(Date.now() + 60 * 60_000).toISOString();
+    const farFutureEnd = new Date(Date.now() + 120 * 60_000).toISOString();
+    await createLoadingSession({ userId: USER_ID, stationId, startTime: farFuture, endTime: farFutureEnd });
+
+    const due = await getSessionsDueForEndReminder();
+    expect(due).toHaveLength(0);
+  });
+
+  it("returns a session whose endTime is exactly 15 minutes from now", async () => {
+    const past = new Date(Date.now() - 30 * 60_000).toISOString();
+    const fifteenMin = new Date(Date.now() + 15 * 60_000).toISOString();
+    await createLoadingSession({ userId: USER_ID, stationId, startTime: past, endTime: fifteenMin });
+
+    const due = await getSessionsDueForEndReminder();
+    expect(due.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not return a session once reminderEndSent is true", async () => {
+    const past = new Date(Date.now() - 30 * 60_000).toISOString();
+    const fifteenMin = new Date(Date.now() + 15 * 60_000).toISOString();
+    const created = await createLoadingSession({ userId: USER_ID, stationId, startTime: past, endTime: fifteenMin });
+
+    await markReminderSent(created.id, "end");
+
+    const due = await getSessionsDueForEndReminder();
+    expect(due.find((s) => s.id === created.id)).toBeUndefined();
+  });
+});
+
+describe("markReminderSent", () => {
+  it("sets reminderStartSent to true in the database", async () => {
+    const session = await createLoadingSession({ userId: USER_ID, stationId, startTime: isoAt(10) });
+    expect(session.reminderStartSent).toBe(false);
+
+    await markReminderSent(session.id, "start");
+
+    const updated = await getSessionById(session.id);
+    expect(updated?.reminderStartSent).toBe(true);
+    expect(updated?.reminderEndSent).toBe(false);
+  });
+
+  it("sets reminderEndSent to true in the database", async () => {
+    const session = await createLoadingSession({ userId: USER_ID, stationId, startTime: isoAt(10), endTime: isoAt(11) });
+    expect(session.reminderEndSent).toBe(false);
+
+    await markReminderSent(session.id, "end");
+
+    const updated = await getSessionById(session.id);
+    expect(updated?.reminderEndSent).toBe(true);
+    expect(updated?.reminderStartSent).toBe(false);
+  });
+});
+

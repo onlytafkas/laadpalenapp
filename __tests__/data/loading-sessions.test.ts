@@ -4,12 +4,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 //  Mock @/db BEFORE importing the module under test
 //  Use vi.hoisted so variables are available inside the vi.mock factory.
 // -----------------------------------------------------------------------
-const { mockFindMany, mockFindFirst, mockInsert, mockUpdate, mockDelete } = vi.hoisted(() => ({
+const { mockFindMany, mockFindFirst, mockInsert, mockUpdate, mockDelete, mockSelect } = vi.hoisted(() => ({
   mockFindMany: vi.fn(),
   mockFindFirst: vi.fn(),
   mockInsert: vi.fn(),
   mockUpdate: vi.fn(),
   mockDelete: vi.fn(),
+  mockSelect: vi.fn(),
 }));
 
 // Chainable builder used by insert/update/delete
@@ -30,6 +31,7 @@ vi.mock("@/db", () => ({
         findFirst: mockFindFirst,
       },
     },
+    select: mockSelect,
     insert: mockInsert,
     update: mockUpdate,
     delete: mockDelete,
@@ -47,6 +49,9 @@ import {
   getUserLoadingSessions,
   getAllLoadingSessions,
   findMaxEndTime,
+  getSessionsDueForStartReminder,
+  getSessionsDueForEndReminder,
+  markReminderSent,
 } from "@/data/loading-sessions";
 import { makeSession } from "@/__tests__/helpers/factories";
 
@@ -68,6 +73,13 @@ beforeEach(() => {
   mockInsert.mockReturnValue(chainable([]));
   mockUpdate.mockReturnValue(chainable([]));
   mockDelete.mockReturnValue(chainable(undefined));
+  // Default select chain: supports both innerJoin-based and direct where-based patterns (empty result)
+  const defaultOrderBy = vi.fn().mockResolvedValue([]);
+  const defaultWhereInner = vi.fn().mockReturnValue({ orderBy: defaultOrderBy });
+  const defaultInnerJoin = vi.fn().mockReturnValue({ where: defaultWhereInner, orderBy: defaultOrderBy });
+  const defaultWhere = vi.fn().mockResolvedValue([]);
+  const defaultFrom = vi.fn().mockReturnValue({ innerJoin: defaultInnerJoin, where: defaultWhere });
+  mockSelect.mockReturnValue({ from: defaultFrom });
 });
 
 // -----------------------------------------------------------------------
@@ -413,20 +425,31 @@ describe("createLoadingSession", () => {
 // -----------------------------------------------------------------------
 describe("getUserLoadingSessions", () => {
   it("returns an empty array when the user has no sessions", async () => {
-    mockFindMany.mockResolvedValue([]);
+    const orderBy = vi.fn().mockResolvedValue([]);
+    const where = vi.fn().mockReturnValue({ orderBy });
+    const innerJoin = vi.fn().mockReturnValue({ where });
+    const from = vi.fn().mockReturnValue({ innerJoin });
+    mockSelect.mockReturnValue({ from });
+
     const result = await getUserLoadingSessions("user_abc");
     expect(result).toEqual([]);
-    expect(mockFindMany).toHaveBeenCalled();
   });
 
   it("returns all sessions belonging to the user", async () => {
+    const station = { id: 1, name: "Station A", description: null };
     const userSessions = [
-      makeSession({ id: 1, userId: "user_abc" }),
-      makeSession({ id: 2, userId: "user_abc" }),
+      { ...makeSession({ id: 1, userId: "user_abc" }), station },
+      { ...makeSession({ id: 2, userId: "user_abc" }), station },
     ];
-    mockFindMany.mockResolvedValue(userSessions);
+    const orderBy = vi.fn().mockResolvedValue(userSessions);
+    const where = vi.fn().mockReturnValue({ orderBy });
+    const innerJoin = vi.fn().mockReturnValue({ where });
+    const from = vi.fn().mockReturnValue({ innerJoin });
+    mockSelect.mockReturnValue({ from });
+
     const result = await getUserLoadingSessions("user_abc");
     expect(result).toHaveLength(2);
+    expect(result[0].station.name).toBe("Station A");
   });
 });
 
@@ -435,15 +458,28 @@ describe("getUserLoadingSessions", () => {
 // -----------------------------------------------------------------------
 describe("getAllLoadingSessions", () => {
   it("returns all sessions when called", async () => {
-    const sessions = [makeSession({ id: 1 }), makeSession({ id: 2 }), makeSession({ id: 3 })];
-    mockFindMany.mockResolvedValue(sessions);
+    const station = { id: 1, name: "Station A", description: null };
+    const allSessions = [
+      { ...makeSession({ id: 1 }), station },
+      { ...makeSession({ id: 2 }), station },
+      { ...makeSession({ id: 3 }), station },
+    ];
+    const orderBy = vi.fn().mockResolvedValue(allSessions);
+    const innerJoin = vi.fn().mockReturnValue({ orderBy });
+    const from = vi.fn().mockReturnValue({ innerJoin });
+    mockSelect.mockReturnValue({ from });
+
     const result = await getAllLoadingSessions();
     expect(result).toHaveLength(3);
-    expect(mockFindMany).toHaveBeenCalled();
+    expect(result[0].station.name).toBe("Station A");
   });
 
   it("returns an empty array when there are no sessions", async () => {
-    mockFindMany.mockResolvedValue([]);
+    const orderBy = vi.fn().mockResolvedValue([]);
+    const innerJoin = vi.fn().mockReturnValue({ orderBy });
+    const from = vi.fn().mockReturnValue({ innerJoin });
+    mockSelect.mockReturnValue({ from });
+
     const result = await getAllLoadingSessions();
     expect(result).toEqual([]);
   });
@@ -575,3 +611,79 @@ describe("findMaxEndTime", () => {
     expect(mockFindMany).toHaveBeenCalled();
   });
 });
+
+// -----------------------------------------------------------------------
+// getSessionsDueForStartReminder
+// -----------------------------------------------------------------------
+describe("getSessionsDueForStartReminder", () => {
+  it("returns an empty array when no sessions are in the window", async () => {
+    const where = vi.fn().mockResolvedValue([]);
+    const from = vi.fn().mockReturnValue({ where });
+    mockSelect.mockReturnValue({ from });
+
+    const result = await getSessionsDueForStartReminder();
+    expect(result).toEqual([]);
+  });
+
+  it("returns sessions that are within the 16-minute window and not yet notified", async () => {
+    const session = makeSession({ id: 10 });
+    const where = vi.fn().mockResolvedValue([session]);
+    const from = vi.fn().mockReturnValue({ where });
+    mockSelect.mockReturnValue({ from });
+
+    const result = await getSessionsDueForStartReminder();
+    expect(result).toEqual([session]);
+  });
+});
+
+// -----------------------------------------------------------------------
+// getSessionsDueForEndReminder
+// -----------------------------------------------------------------------
+describe("getSessionsDueForEndReminder", () => {
+  it("returns an empty array when no sessions are in the window", async () => {
+    const where = vi.fn().mockResolvedValue([]);
+    const from = vi.fn().mockReturnValue({ where });
+    mockSelect.mockReturnValue({ from });
+
+    const result = await getSessionsDueForEndReminder();
+    expect(result).toEqual([]);
+  });
+
+  it("returns sessions whose end time is in the window and not yet notified", async () => {
+    const session = makeSession({ id: 20 });
+    const where = vi.fn().mockResolvedValue([session]);
+    const from = vi.fn().mockReturnValue({ where });
+    mockSelect.mockReturnValue({ from });
+
+    const result = await getSessionsDueForEndReminder();
+    expect(result).toEqual([session]);
+  });
+});
+
+// -----------------------------------------------------------------------
+// markReminderSent
+// -----------------------------------------------------------------------
+describe("markReminderSent", () => {
+  it("updates reminderStartSent to true when type is 'start'", async () => {
+    const where = vi.fn().mockResolvedValue(undefined);
+    const set = vi.fn().mockReturnValue({ where });
+    mockUpdate.mockReturnValue({ set });
+
+    await markReminderSent(7, "start");
+
+    expect(set).toHaveBeenCalledWith({ reminderStartSent: true });
+    expect(where).toHaveBeenCalled();
+  });
+
+  it("updates reminderEndSent to true when type is 'end'", async () => {
+    const where = vi.fn().mockResolvedValue(undefined);
+    const set = vi.fn().mockReturnValue({ where });
+    mockUpdate.mockReturnValue({ set });
+
+    await markReminderSent(8, "end");
+
+    expect(set).toHaveBeenCalledWith({ reminderEndSent: true });
+    expect(where).toHaveBeenCalled();
+  });
+});
+

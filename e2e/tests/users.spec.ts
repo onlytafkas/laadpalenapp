@@ -23,6 +23,7 @@ const REGULAR_USER_ID =
 // (must be a valid Clerk user ID that exists in your Clerk instance)
 const NEW_USER_ID = process.env.E2E_NEW_USER_ID ?? "user_e2e_new";
 const NEW_USER_PLATE = "E2E-NEW-001";
+const NEW_USER_MOBILE = "+15550001002";
 
 test.describe("User management", () => {
   test.beforeEach(async ({ page }) => {
@@ -38,7 +39,7 @@ test.describe("User management", () => {
     const userPage = new UserPage(page);
 
     await userPage.clickAddUser();
-    await userPage.fillCreateUser(NEW_USER_ID, NEW_USER_PLATE);
+    await userPage.fillCreateUser(NEW_USER_ID, NEW_USER_PLATE, NEW_USER_MOBILE);
     await userPage.submitCreate();
 
     await expect(

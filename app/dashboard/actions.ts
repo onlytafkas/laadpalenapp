@@ -8,6 +8,7 @@ import { createStation, updateStation, deleteStation, checkStationHasSessions, g
 import { createUser, updateUser, deactivateUser, activateUser, getUserInfo } from "@/data/usersinfo";
 import { insertAuditLog } from "@/data/audit";
 import { revalidatePath } from "next/cache";
+import { sendSessionEventSms, type SessionSmsEventType } from "@/lib/session-sms";
 
 async function getRequestMetadata() {
   const headersList = await headers();
@@ -17,6 +18,30 @@ async function getRequestMetadata() {
     null;
   const userAgent = headersList.get("user-agent") ?? null;
   return { ipAddress: ip, userAgent };
+}
+
+async function notifySessionEvent(
+  eventType: SessionSmsEventType,
+  session: {
+    userId: string;
+    stationId: number;
+    startTime: Date | string;
+    endTime: Date | string | null;
+  }
+) {
+  const station = await getStationById(session.stationId);
+
+  try {
+    await sendSessionEventSms({
+      eventType,
+      userId: session.userId,
+      stationName: station?.name ?? `Station ${session.stationId}`,
+      startTime: session.startTime,
+      endTime: session.endTime,
+    });
+  } catch (error) {
+    console.error(`Failed to send ${eventType} session SMS:`, error);
+  }
 }
 
 const createSessionSchema = z.object({
@@ -62,6 +87,10 @@ export async function createSession(data: CreateSessionInput) {
   if (!userInfo.isActive) {
     await insertAuditLog({ performedByUserId: userId, action: "CREATE_SESSION", entityType: "session", status: "forbidden", errorMessage: "Account deactivated", afterData: data, ...meta });
     return { error: "Your account has been deactivated. Please contact an administrator to restore access." };
+  }
+  if (!userInfo.mobileNumber?.trim()) {
+    await insertAuditLog({ performedByUserId: userId, action: "CREATE_SESSION", entityType: "session", status: "forbidden", errorMessage: "Mobile number missing", afterData: data, ...meta });
+    return { error: "Your mobile number is missing. Please contact an administrator to update your profile before making a reservation." };
   }
 
   // 4. Check that the session is not beyond the day after today
@@ -144,6 +173,8 @@ export async function createSession(data: CreateSessionInput) {
       startTime: data.startTime,
       endTime: data.endTime,
     });
+
+    await notifySessionEvent("created", session);
 
     revalidatePath("/dashboard");
 
@@ -266,6 +297,8 @@ export async function updateSession(data: UpdateSessionInput) {
       endTime: data.endTime,
     });
 
+    await notifySessionEvent("updated", session);
+
     revalidatePath("/dashboard");
 
     await insertAuditLog({ performedByUserId: userId, action: "UPDATE_SESSION", entityType: "session", entityId: String(data.id), status: "success", beforeData: existingSession, afterData: session, ...meta });
@@ -304,6 +337,8 @@ export async function deleteSession(id: number) {
   // 3. Delete session via data helper
   try {
     await deleteLoadingSession(id);
+
+    await notifySessionEvent("deleted", existingSession);
 
     revalidatePath("/dashboard");
 
@@ -488,11 +523,13 @@ export async function deleteStationAction(id: number) {
 const createUserSchema = z.object({
   userId: z.string().min(1, "User ID is required"),
   carNumberPlate: z.string().min(1, "Car number plate is required").max(20),
+  mobileNumber: z.string().min(1, "Mobile number is required").max(30),
 });
 
 interface CreateUserInput {
   userId: string;
   carNumberPlate: string;
+  mobileNumber: string;
 }
 
 export async function createUserAction(data: CreateUserInput) {
@@ -529,6 +566,7 @@ export async function createUserAction(data: CreateUserInput) {
     const user = await createUser({
       userId: data.userId,
       carNumberPlate: data.carNumberPlate,
+      mobileNumber: data.mobileNumber,
       isActive: true,
     });
 
@@ -546,6 +584,7 @@ export async function createUserAction(data: CreateUserInput) {
 const updateUserSchema = z.object({
   userId: z.string().min(1, "User ID is required"),
   carNumberPlate: z.string().min(1, "Car number plate is required").max(20),
+  mobileNumber: z.string().min(1, "Mobile number is required").max(30),
   isActive: z.boolean(),
   isAdmin: z.boolean(),
 });
@@ -553,6 +592,7 @@ const updateUserSchema = z.object({
 interface UpdateUserInput {
   userId: string;
   carNumberPlate: string;
+  mobileNumber: string;
   isActive: boolean;
   isAdmin: boolean;
 }
@@ -594,6 +634,7 @@ export async function updateUserAction(data: UpdateUserInput) {
     const user = await updateUser({
       userId: data.userId,
       carNumberPlate: data.carNumberPlate,
+      mobileNumber: data.mobileNumber,
       isActive: data.isActive,
       isAdmin: data.isAdmin,
     });

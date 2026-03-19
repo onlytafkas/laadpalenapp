@@ -14,6 +14,7 @@ export async function getAllUsers() {
 export async function createUser(data: { 
   userId: string; 
   carNumberPlate: string;
+  mobileNumber?: string | null;
   isActive?: boolean;
 }) {
   const [user] = await db
@@ -21,6 +22,7 @@ export async function createUser(data: {
     .values({
       userId: data.userId,
       carNumberPlate: data.carNumberPlate,
+      mobileNumber: data.mobileNumber ?? null,
       isActive: data.isActive ?? true,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -33,6 +35,7 @@ export async function createUser(data: {
 export async function updateUser(data: { 
   userId: string; 
   carNumberPlate: string;
+  mobileNumber?: string | null;
   isActive: boolean;
   isAdmin: boolean;
 }) {
@@ -40,6 +43,7 @@ export async function updateUser(data: {
     .update(usersinfo)
     .set({
       carNumberPlate: data.carNumberPlate,
+      mobileNumber: data.mobileNumber ?? null,
       isActive: data.isActive,
       isAdmin: data.isAdmin,
       updatedAt: new Date(),

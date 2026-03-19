@@ -25,6 +25,7 @@ const {
   mockDeactivateUser,
   mockActivateUser,
   mockSendSessionEventSms,
+  mockTriggerSessionReminders,
 } = vi.hoisted(() => ({
   mockAuthUserId: { value: "user_test123" as string | null },
   mockGetUserInfo: vi.fn(),
@@ -45,6 +46,7 @@ const {
   mockDeactivateUser: vi.fn(),
   mockActivateUser: vi.fn(),
   mockSendSessionEventSms: vi.fn(),
+  mockTriggerSessionReminders: vi.fn(),
 }));
 
 // -- Clerk auth --
@@ -100,6 +102,10 @@ vi.mock("@/data/audit", () => ({
   insertAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/data/session-reminders", () => ({
+  triggerSessionReminders: mockTriggerSessionReminders,
+}));
+
 vi.mock("@/lib/session-sms", () => ({
   sendSessionEventSms: mockSendSessionEventSms,
 }));
@@ -118,6 +124,7 @@ import {
   updateUserAction,
   deactivateUserAction,
   activateUserAction,
+  triggerSessionRemindersAction,
 } from "@/app/dashboard/actions";
 import { makeSession, makeStation, makeUserInfo } from "@/__tests__/helpers/factories";
 
@@ -157,6 +164,7 @@ beforeEach(() => {
   mockFindNextAvailableStartTime.mockResolvedValue(null);
   mockCreateLoadingSession.mockResolvedValue(makeSession());
   mockSendSessionEventSms.mockResolvedValue({ status: "sent" });
+  mockTriggerSessionReminders.mockResolvedValue({ startReminders: 1, endReminders: 2 });
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -319,6 +327,45 @@ describe("deleteSession", () => {
       startTime: session.startTime,
       endTime: session.endTime,
     });
+  });
+});
+
+describe("triggerSessionRemindersAction", () => {
+  it("returns error when the user is not authenticated", async () => {
+    mockAuthUserId.value = null;
+
+    const result = await triggerSessionRemindersAction();
+
+    expect(result).toEqual({ error: "Unauthorized" });
+  });
+
+  it("returns error when the caller is not an active admin", async () => {
+    mockGetUserInfo.mockResolvedValue(activeUser({ isAdmin: false }));
+
+    const result = await triggerSessionRemindersAction();
+
+    expect(result).toEqual({ error: "Forbidden: Admin access required" });
+  });
+
+  it("returns reminder counts when the admin trigger succeeds", async () => {
+    mockGetUserInfo.mockResolvedValue(adminUser());
+
+    const result = await triggerSessionRemindersAction();
+
+    expect(result).toEqual({
+      success: true,
+      data: { startReminders: 1, endReminders: 2 },
+    });
+    expect(mockTriggerSessionReminders).toHaveBeenCalled();
+  });
+
+  it("returns an error when the reminder runner throws", async () => {
+    mockGetUserInfo.mockResolvedValue(adminUser());
+    mockTriggerSessionReminders.mockRejectedValue(new Error("boom"));
+
+    const result = await triggerSessionRemindersAction();
+
+    expect(result).toEqual({ error: "Failed to trigger session reminders" });
   });
 });
 

@@ -20,6 +20,7 @@ test.describe("Dashboard rendering", () => {
     await expect(dashboard.stationsTab).toBeVisible();
     await expect(dashboard.usersTab).toBeVisible();
     await expect(dashboard.logsTab).toBeVisible();
+    await expect(dashboard.runReminderCronButton).toBeVisible();
   });
 
   test("regular user does not see admin-only tabs (Stations, Users, Logs)", async ({
@@ -31,6 +32,7 @@ test.describe("Dashboard rendering", () => {
     // User-facing tabs are visible
     await expect(dashboard.timelineTab).toBeVisible();
     await expect(dashboard.sessionsTab).toBeVisible();
+    await expect(dashboard.runReminderCronButton).toHaveCount(0);
 
     // Admin-only tabs must not be present in the DOM at all
     await expect(dashboard.stationsTab).not.toBeVisible();
@@ -47,5 +49,14 @@ test.describe("Dashboard rendering", () => {
     await expect(dashboard.activeSessionsCard).toBeVisible();
     await expect(dashboard.plannedSessionsCard).toBeVisible();
     await expect(dashboard.uniqueStationsCard).toBeVisible();
+  });
+
+  test("admin can manually trigger the reminder job from the dashboard", async ({ page }) => {
+    await loginAsAdmin(page);
+    const dashboard = new DashboardPage(page);
+
+    await dashboard.runReminderCronButton.click();
+
+    await expect(page.getByText(/triggered reminders:/i)).toBeVisible({ timeout: 7000 });
   });
 });

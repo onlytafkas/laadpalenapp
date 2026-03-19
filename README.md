@@ -55,6 +55,14 @@ npm run version:major
 
 ## Release Notes
 
+### v1.4.0
+
+- Added an admin-only dashboard button to manually run the session reminder job on demand and show the resulting reminder counts.
+
+### v1.3.1
+
+- Broadened SMS reminder eligibility so start reminders remain sendable after the session starts until it ends, and end reminders remain sendable from 15 minutes before end until one hour after end.
+
 ### v1.2.0
 
 - Moved session SMS delivery to the `usersinfo.mobile_number` field managed in the dashboard and blocked session creation when a mobile number is missing.

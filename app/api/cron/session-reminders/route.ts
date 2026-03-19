@@ -1,10 +1,4 @@
-import {
-  getSessionsDueForStartReminder,
-  getSessionsDueForEndReminder,
-  markReminderSent,
-} from "@/data/loading-sessions";
-import { sendSessionEventSms } from "@/lib/session-sms";
-import { getStationById } from "@/data/stations";
+import { triggerSessionReminders } from "@/data/session-reminders";
 
 export async function GET(request: Request) {
   const cronSecret = (process.env.CRON_SECRET ?? "").trim();
@@ -18,47 +12,5 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [startSessions, endSessions] = await Promise.all([
-    getSessionsDueForStartReminder(),
-    getSessionsDueForEndReminder(),
-  ]);
-
-  let startReminders = 0;
-  let endReminders = 0;
-
-  for (const session of startSessions) {
-    try {
-      const station = await getStationById(session.stationId);
-      await sendSessionEventSms({
-        eventType: "start_reminder",
-        userId: session.userId,
-        stationName: station?.name ?? `Station ${session.stationId}`,
-        startTime: session.startTime,
-        endTime: session.endTime,
-      });
-      await markReminderSent(session.id, "start");
-      startReminders++;
-    } catch (error) {
-      console.error(`Failed to send start reminder for session ${session.id}:`, error);
-    }
-  }
-
-  for (const session of endSessions) {
-    try {
-      const station = await getStationById(session.stationId);
-      await sendSessionEventSms({
-        eventType: "end_reminder",
-        userId: session.userId,
-        stationName: station?.name ?? `Station ${session.stationId}`,
-        startTime: session.startTime,
-        endTime: session.endTime,
-      });
-      await markReminderSent(session.id, "end");
-      endReminders++;
-    } catch (error) {
-      console.error(`Failed to send end reminder for session ${session.id}:`, error);
-    }
-  }
-
-  return Response.json({ startReminders, endReminders });
+  return Response.json(await triggerSessionReminders());
 }

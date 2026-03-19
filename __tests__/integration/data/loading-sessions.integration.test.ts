@@ -8,7 +8,7 @@
  * - findNextAvailableStartTime walking through chained conflicts
  * - findMaxEndTime against real next-session row
  */
-import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 
 vi.mock("@/db", async () => await import("@/__tests__/integration/helpers/test-db"));
 
@@ -428,9 +428,8 @@ describe("findMaxEndTime", () => {
 // ── Reminder helpers ─────────────────────────────────────────────────────────
 
 describe("getSessionsDueForStartReminder", () => {
-  it("returns an empty array when no sessions fall in the 15-minute window", async () => {
-    // Create a session starting in 60 minutes — well outside the 14–16min window
-    const farFuture = new Date(Date.now() + 60 * 60_000).toISOString();
+  it("returns an empty array when the session starts more than 15 minutes in the future", async () => {
+    const farFuture = new Date(Date.now() + 16 * 60_000).toISOString();
     await createLoadingSession({ userId: USER_ID, stationId, startTime: farFuture });
 
     const due = await getSessionsDueForStartReminder();
@@ -445,6 +444,30 @@ describe("getSessionsDueForStartReminder", () => {
     expect(due.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("returns a started session while its end time is still in the future", async () => {
+    await createLoadingSession({
+      userId: USER_ID,
+      stationId,
+      startTime: new Date(Date.now() - 10 * 60_000).toISOString(),
+      endTime: new Date(Date.now() + 20 * 60_000).toISOString(),
+    });
+
+    const due = await getSessionsDueForStartReminder();
+    expect(due.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not return a started session after its end time has passed", async () => {
+    await createLoadingSession({
+      userId: USER_ID,
+      stationId,
+      startTime: new Date(Date.now() - 20 * 60_000).toISOString(),
+      endTime: new Date(Date.now() - 1 * 60_000).toISOString(),
+    });
+
+    const due = await getSessionsDueForStartReminder();
+    expect(due).toHaveLength(0);
+  });
+
   it("does not return a session once reminderStartSent is true", async () => {
     const fifteenMin = new Date(Date.now() + 15 * 60_000).toISOString();
     const created = await createLoadingSession({ userId: USER_ID, stationId, startTime: fifteenMin });
@@ -457,9 +480,9 @@ describe("getSessionsDueForStartReminder", () => {
 });
 
 describe("getSessionsDueForEndReminder", () => {
-  it("returns an empty array when no session end times fall in the window", async () => {
-    const farFuture = new Date(Date.now() + 60 * 60_000).toISOString();
-    const farFutureEnd = new Date(Date.now() + 120 * 60_000).toISOString();
+  it("returns an empty array when the session end is more than 15 minutes in the future", async () => {
+    const farFuture = new Date(Date.now() + 30 * 60_000).toISOString();
+    const farFutureEnd = new Date(Date.now() + 16 * 60_000).toISOString();
     await createLoadingSession({ userId: USER_ID, stationId, startTime: farFuture, endTime: farFutureEnd });
 
     const due = await getSessionsDueForEndReminder();
@@ -473,6 +496,30 @@ describe("getSessionsDueForEndReminder", () => {
 
     const due = await getSessionsDueForEndReminder();
     expect(due.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("returns a session up to one hour after the end time", async () => {
+    await createLoadingSession({
+      userId: USER_ID,
+      stationId,
+      startTime: new Date(Date.now() - 90 * 60_000).toISOString(),
+      endTime: new Date(Date.now() - 30 * 60_000).toISOString(),
+    });
+
+    const due = await getSessionsDueForEndReminder();
+    expect(due.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not return a session more than one hour after the end time", async () => {
+    await createLoadingSession({
+      userId: USER_ID,
+      stationId,
+      startTime: new Date(Date.now() - 3 * 60 * 60_000).toISOString(),
+      endTime: new Date(Date.now() - 61 * 60_000).toISOString(),
+    });
+
+    const due = await getSessionsDueForEndReminder();
+    expect(due).toHaveLength(0);
   });
 
   it("does not return a session once reminderEndSent is true", async () => {

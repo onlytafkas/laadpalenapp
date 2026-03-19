@@ -6,6 +6,7 @@ import { headers } from "next/headers";
 import { createLoadingSession, updateLoadingSession, deleteLoadingSession, getSessionById, checkSessionOverlap, findNextAvailableStartTime, checkCooldownConstraint } from "@/data/loading-sessions";
 import { createStation, updateStation, deleteStation, checkStationHasSessions, getStationById } from "@/data/stations";
 import { createUser, updateUser, deactivateUser, activateUser, getUserInfo } from "@/data/usersinfo";
+import { triggerSessionReminders } from "@/data/session-reminders";
 import { insertAuditLog } from "@/data/audit";
 import { revalidatePath } from "next/cache";
 import { sendSessionEventSms, type SessionSmsEventType } from "@/lib/session-sms";
@@ -348,6 +349,35 @@ export async function deleteSession(id: number) {
     console.error("Failed to delete loading session:", error);
     await insertAuditLog({ performedByUserId: userId, action: "DELETE_SESSION", entityType: "session", entityId: String(id), status: "error", errorMessage: "Failed to delete charging session", beforeData: existingSession, ...meta });
     return { error: "Failed to delete charging session" };
+  }
+}
+
+export async function triggerSessionRemindersAction() {
+  const meta = await getRequestMetadata();
+
+  const { userId } = await auth();
+  if (!userId) {
+    await insertAuditLog({ performedByUserId: null, action: "TRIGGER_SESSION_REMINDERS", entityType: "session", status: "unauthorized", errorMessage: "Unauthorized", ...meta });
+    return { error: "Unauthorized" };
+  }
+
+  const callerInfo = await getUserInfo(userId);
+  if (!callerInfo?.isAdmin || !callerInfo?.isActive) {
+    await insertAuditLog({ performedByUserId: userId, action: "TRIGGER_SESSION_REMINDERS", entityType: "session", status: "forbidden", errorMessage: "Admin access required", ...meta });
+    return { error: "Forbidden: Admin access required" };
+  }
+
+  try {
+    const result = await triggerSessionReminders();
+
+    revalidatePath("/dashboard");
+
+    await insertAuditLog({ performedByUserId: userId, action: "TRIGGER_SESSION_REMINDERS", entityType: "session", status: "success", afterData: result, ...meta });
+    return { success: true, data: result };
+  } catch (error) {
+    console.error("Failed to trigger session reminders:", error);
+    await insertAuditLog({ performedByUserId: userId, action: "TRIGGER_SESSION_REMINDERS", entityType: "session", status: "error", errorMessage: "Failed to trigger session reminders", ...meta });
+    return { error: "Failed to trigger session reminders" };
   }
 }
 

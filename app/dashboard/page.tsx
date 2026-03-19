@@ -8,6 +8,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { CreateSessionDialog } from "@/components/session/create-session-dialog";
 import { EditSessionDialog } from "@/components/session/edit-session-dialog";
 import { DeleteSessionDialog } from "@/components/session/delete-session-dialog";
+import { TriggerSessionRemindersButton } from "@/components/session/trigger-session-reminders-button";
 import { CreateStationDialog } from "@/components/station/create-station-dialog";
 import { EditStationDialog } from "@/components/station/edit-station-dialog";
 import { DeleteStationDialog } from "@/components/station/delete-station-dialog";
@@ -221,7 +222,10 @@ export default async function DashboardPage() {
                 {isAdmin && <TabsTrigger value="users">Users</TabsTrigger>}
                 {isAdmin && <TabsTrigger value="audit">Logs</TabsTrigger>}
               </TabsList>
-              <CreateSessionDialog stations={stations} hasUserInfo={!!currentUserInfo} isUserActive={currentUserInfo?.isActive ?? false} />
+              <div className="flex items-center gap-2">
+                {isAdmin && <TriggerSessionRemindersButton />}
+                <CreateSessionDialog stations={stations} hasUserInfo={!!currentUserInfo} isUserActive={currentUserInfo?.isActive ?? false} />
+              </div>
             </div>
             
             <TabsContent value="timeline" className="mt-0">

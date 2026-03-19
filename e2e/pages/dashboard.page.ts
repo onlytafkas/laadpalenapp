@@ -18,6 +18,7 @@ export class DashboardPage {
   readonly uniqueStationsCard: Locator;
 
   // Primary CTA
+  readonly runReminderCronButton: Locator;
   readonly reserveSessionButton: Locator;
 
   constructor(page: Page) {
@@ -35,6 +36,9 @@ export class DashboardPage {
     this.plannedSessionsCard = page.getByText("Planned Sessions");
     this.uniqueStationsCard = page.getByText("Unique Stations");
 
+    this.runReminderCronButton = page.getByRole("button", {
+      name: "Run Reminder Cron",
+    });
     this.reserveSessionButton = page.getByRole("button", {
       name: "Reserve Session",
     });

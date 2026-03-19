@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { sessions, stations } from "@/db/schema";
-import { eq, desc, and, ne, gt, lte } from "drizzle-orm";
+import { eq, desc, and, ne, gt, lte, or, isNull } from "drizzle-orm";
 
 /** Strips seconds and milliseconds so timestamps are stored at minute precision. */
 function toMinute(date: Date): Date {
@@ -351,46 +351,49 @@ export async function checkCooldownConstraint(
   return { valid: true };
 }
 
-/** The upper bound of the reminder window: sessions starting within 16 minutes will be picked up by the next cron run. */
-const REMINDER_WINDOW_MS = 16 * 60_000;
+const START_REMINDER_LEAD_MS = 15 * 60_000;
+const END_REMINDER_LEAD_MS = 15 * 60_000;
+const END_REMINDER_GRACE_MS = 60 * 60_000;
 
 /**
- * Returns sessions whose startTime falls within (now, now+16min]
- * and whose start reminder has not yet been sent.
- * Using "now" as the lower bound means even sessions booked moments before
- * their start time are caught by the very next cron run (every minute).
+ * Returns sessions eligible for a start reminder.
+ * A session becomes eligible 15 minutes before its start time and remains
+ * eligible until it ends, provided the reminder has not already been sent.
  */
 export async function getSessionsDueForStartReminder() {
   const now = new Date();
-  const windowEnd = new Date(now.getTime() + REMINDER_WINDOW_MS);
+  const startThreshold = new Date(now.getTime() + START_REMINDER_LEAD_MS);
 
   return db
     .select()
     .from(sessions)
     .where(
       and(
-        gt(sessions.startTime, now),
-        lte(sessions.startTime, windowEnd),
+        lte(sessions.startTime, startThreshold),
+        or(isNull(sessions.endTime), gt(sessions.endTime, now)),
         eq(sessions.reminderStartSent, false)
       )
     );
 }
 
 /**
- * Returns sessions whose endTime falls within (now, now+16min]
- * and whose end reminder has not yet been sent.
+ * Returns sessions eligible for an end reminder.
+ * A session becomes eligible 15 minutes before its end time and remains
+ * eligible until 1 hour after the end time, provided the reminder has not
+ * already been sent.
  */
 export async function getSessionsDueForEndReminder() {
   const now = new Date();
-  const windowEnd = new Date(now.getTime() + REMINDER_WINDOW_MS);
+  const endThreshold = new Date(now.getTime() + END_REMINDER_LEAD_MS);
+  const graceThreshold = new Date(now.getTime() - END_REMINDER_GRACE_MS);
 
   return db
     .select()
     .from(sessions)
     .where(
       and(
-        gt(sessions.endTime, now),
-        lte(sessions.endTime, windowEnd),
+        gt(sessions.endTime, graceThreshold),
+        lte(sessions.endTime, endThreshold),
         eq(sessions.reminderEndSent, false)
       )
     );

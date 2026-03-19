@@ -43,6 +43,14 @@ npm run version:major
 
 ## Release Notes
 
+### v1.0.2
+
+- Removed the ability to edit active sessions from the Sessions tab.
+
+### v1.0.1
+
+- Fixed the Sessions dashboard so the Completed Sessions list only shows sessions finished today.
+
 ### v1.0.0
 
 - Added SemVer-based application versioning with centralized validation and bump logic.

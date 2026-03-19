@@ -105,10 +105,12 @@ export default async function DashboardPage() {
     userCarPlates.set(userId, currentUserInfo.carNumberPlate);
   }
   const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
   // Admin sees stats and sessions for all users; regular users see only their own
   const displaySessions = isAdmin ? allSessions : sessions;
   const completedSessions = displaySessions
-    .filter((s) => s.endTime && new Date(s.endTime) <= now)
+    .filter((s) => s.endTime && new Date(s.endTime) <= now && new Date(s.endTime) >= todayStart)
     .sort((a, b) => new Date(b.endTime!).getTime() - new Date(a.endTime!).getTime());
   const activeSessions = displaySessions
     .filter((s) => new Date(s.startTime) <= now && (!s.endTime || new Date(s.endTime) > now))
@@ -118,8 +120,6 @@ export default async function DashboardPage() {
     .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
   // Stats cards always show data for all users
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
   const allTodaySessions = allSessions.filter((s) => new Date(s.startTime) >= todayStart && new Date(s.startTime) < todayEnd);
   const allActiveSessions = allSessions.filter((s) => new Date(s.startTime) <= now && (!s.endTime || new Date(s.endTime) > now));
   const allCompletedSessions = allSessions.filter((s) => s.endTime && new Date(s.endTime) <= now && new Date(s.endTime) >= todayStart);
@@ -336,9 +336,6 @@ export default async function DashboardPage() {
                       </div>
                       <div className="ml-8 text-sm text-zinc-400 mb-3">
                         Started: {new Date(session.startTime).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                      </div>
-                      <div className="ml-8 flex gap-2">
-                        <EditSessionDialog session={session} stations={stations} />
                       </div>
                     </div>
                     );

@@ -8,6 +8,7 @@
  */
 import { test, expect } from "@playwright/test";
 import { HomePage } from "../pages/home.page";
+import { appVersionLabel } from "@/lib/version";
 
 test.describe("Authentication guards", () => {
   test("unauthenticated visit to /dashboard redirects to the home page", async ({
@@ -25,7 +26,7 @@ test.describe("Authentication guards", () => {
     await home.goto();
 
     await expect(
-      page.getByRole("heading", { name: /charging stations app v1\.0\.0/i })
+      page.getByRole("heading", { name: `Charging Stations App ${appVersionLabel}` })
     ).toBeVisible();
     await expect(home.getStartedButton).toBeVisible();
     await expect(home.startManagingButton).toBeVisible();

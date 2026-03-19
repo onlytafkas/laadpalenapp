@@ -161,4 +161,96 @@ test.describe("Session booking", () => {
         .getByText(/cooldown|4.hour|wait|next session/i)
     ).toBeVisible({ timeout: 7000 });
   });
+
+  test("completed sessions only show entries finished today", async ({ page }) => {
+    const uniqueSuffix = Date.now();
+    const yesterdayStationName = `E2E Yesterday Station ${uniqueSuffix}`;
+    const todayStationName = `E2E Today Station ${uniqueSuffix}`;
+
+    const [yesterdayStation] = await testDb
+      .insert(stations)
+      .values({ name: yesterdayStationName })
+      .returning();
+    const [todayStation] = await testDb
+      .insert(stations)
+      .values({ name: todayStationName })
+      .returning();
+
+    const now = new Date();
+
+    const yesterdayStart = new Date(now);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+    yesterdayStart.setHours(9, 0, 0, 0);
+    const yesterdayEnd = new Date(yesterdayStart);
+    yesterdayEnd.setHours(10, 0, 0, 0);
+
+    const todayStart = new Date(now);
+    todayStart.setHours(11, 0, 0, 0);
+    const todayEnd = new Date(todayStart);
+    todayEnd.setHours(12, 0, 0, 0);
+
+    await testDb.insert(sessions).values([
+      {
+        userId: E2E_REGULAR_USER_ID,
+        stationId: yesterdayStation.id,
+        startTime: yesterdayStart,
+        endTime: yesterdayEnd,
+      },
+      {
+        userId: E2E_REGULAR_USER_ID,
+        stationId: todayStation.id,
+        startTime: todayStart,
+        endTime: todayEnd,
+      },
+    ]);
+
+    await loginAsUser(page);
+    const dashboard = new DashboardPage(page);
+
+    await dashboard.gotoTab("sessions");
+
+    const completedSessionsCard = page
+      .getByRole("heading", { name: "Completed Sessions" })
+      .locator("..");
+
+    await expect(completedSessionsCard.getByText(todayStationName)).toBeVisible();
+    await expect(completedSessionsCard.getByText(yesterdayStationName)).toHaveCount(0);
+  });
+
+  test("active sessions do not expose an edit action in the Sessions tab", async ({
+    page,
+  }) => {
+    const [station] = await testDb
+      .select()
+      .from(stations)
+      .where(eq(stations.name, STATION_NAME));
+
+    if (!station) {
+      throw new Error(`Seed station not found: ${STATION_NAME}`);
+    }
+
+    const activeStart = new Date();
+    activeStart.setMinutes(activeStart.getMinutes() - 15, 0, 0);
+    const activeEnd = new Date();
+    activeEnd.setMinutes(activeEnd.getMinutes() + 45, 0, 0);
+
+    await testDb.insert(sessions).values({
+      userId: E2E_REGULAR_USER_ID,
+      stationId: station.id,
+      startTime: activeStart,
+      endTime: activeEnd,
+    });
+
+    await loginAsUser(page);
+    const dashboard = new DashboardPage(page);
+
+    await dashboard.gotoTab("sessions");
+
+    const activeSessionsCard = page
+      .getByRole("heading", { name: "Active Sessions" })
+      .locator("..");
+
+    await expect(activeSessionsCard.getByText(STATION_NAME)).toBeVisible();
+    await expect(activeSessionsCard.getByRole("button", { name: "Edit" })).toHaveCount(0);
+  });
 });

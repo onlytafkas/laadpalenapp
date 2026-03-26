@@ -67,7 +67,7 @@ npm run version:minor
 npm run version:major
 ```
 
-## Release Notes
+## Release Notes ---
 
 ### v1.5.0
 
